@@ -1,0 +1,72 @@
+> Act as an expert Front-End Developer and Systems Architect. I need you to write the complete, production-ready code (HTML, CSS, and Vanilla JavaScript) for a serverless web application tailored for a Chartered Accountant (CA) to manage client fees.
+> The application will be hosted statically on GitHub Pages and must use Firebase (Authentication and Firestore) as its backend. Ensure the code is strictly modular, thoroughly commented, and uses modern ES6+ JavaScript.
+> ### **1. Technology Stack & Constraints**
+> 
+> 
+> * **Frontend:** Pure HTML5, Vanilla JavaScript, and CSS3. Do not use frameworks like React or Angular.
+> * **CSS Framework:** Use Tailwind CSS (via CDN) for rapid, modern, and mobile-first UI styling.
+> * **Backend:** Firebase SDK v10 (via CDN) for Email/Password Authentication and Firestore Database.
+> * **Excel Parsing:** Use SheetJS (`xlsx` via CDN) to parse uploaded Excel files entirely on the client-side.
+> 
+> 
+> ### **2. UI/UX Requirements**
+> 
+> 
+> * **Mobile-First & Minimalist:** The primary viewport is mobile. Use large touch targets, sticky bottom action bars, and clean, minimal card-based layouts.
+> * **Theming:** Implement a robust Dark/Light mode toggle that saves the user's preference to `localStorage` and applies a `dark` class to the root HTML.
+> * **Layout Structure:**
+> * Login/Authentication View.
+> * Main Dashboard View (accessible only post-login).
+> 
+> 
+> 
+> 
+> ### **3. Core Features & Business Logic**
+> 
+> 
+> * **Authentication:** Implement Firebase Email/Password login. Secure the dashboard so unauthenticated users are redirected to the login view.
+> * **Financial Year (FY) Management:** The user must be able to create a new Financial Year (e.g., "FY 2026-2027") and select it from a dropdown. All client data must be scoped to the currently selected FY.
+> * **Excel Import:** Provide a file input for `.xlsx` files. Parse the file using SheetJS, extract the client names, and dynamically generate new client documents in Firestore under the selected FY.
+> * **Dashboard Metrics:** At the top of the main view, display a sticky or highly visible summary card showing:
+> * Total Number of Clients
+> * Total Fees Quoted vs. Total Fees Received
+> * Count of Paid Clients
+> 
+> 
+> * **Client Search:** Add a sticky search bar with instant auto-suggestion/filtering to quickly find a client by name without querying the database again (filter the locally fetched DOM/array).
+> 
+> 
+> ### **4. Client List & Status Workflow**
+> 
+> 
+> Display clients in vertical lists, visually separated into three distinct sections in the following strict order:
+> 1. **Pending / Active Clients:**
+> * Each row must show the client's name.
+> * Include input fields/buttons to log: **Quoted Fees**, **Comments/Notes**, and **Fees Received**.
+> * Allow the "Fees Received" to be edited if it differs from the quoted amount.
+> * Include a "Mark as Paid" action button.
+> 
+> 
+> 2. **Fees Paid:**
+> * When "Mark as Paid" is clicked, update the Firestore document and immediately move the UI row to this section.
+> * Display the final received amount and lock it (or provide an "Undo" button).
+> 
+> 
+> 3. **No Service This Year:**
+> * A bottom section for clients who are imported but marked as not requiring services for the current FY.
+> 
+> 
+> 
+> 
+> ### **5. Output Requirements**
+> 
+> 
+> Please provide the solution in the following structure:
+> 1. **`index.html`**: The complete HTML structure including CDN links for Tailwind, Firebase, and SheetJS.
+> 2. **`style.css`**: Any custom CSS required for transitions, scrollbars, or Tailwind overrides.
+> 3. **`app.js`**: The vanilla JavaScript handling Firebase init, auth state, Firestore CRUD, DOM manipulation, and Excel parsing.
+> 4. **Firebase Rules**: The secure Firestore security rules to ensure the CA can only read/write their own authenticated data.
+> 
+> 
+
+---

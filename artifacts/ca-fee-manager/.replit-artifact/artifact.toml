@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "CA Fee Manager"
+version = "1.0.0"
+id = "artifacts/ca-fee-manager"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23809
+
+[services.development]
+run = "pnpm --filter @workspace/ca-fee-manager run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/ca-fee-manager", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/ca-fee-manager/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23809"
+BASE_PATH = "/"
