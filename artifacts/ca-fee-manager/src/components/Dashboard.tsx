@@ -65,7 +65,7 @@ export function Dashboard() {
                 <Calculator className="w-5 h-5" />
               </div>
               <div>
-                <h1 className="text-lg font-bold tracking-tight">CA Fee Manager</h1>
+                <h1 className="text-lg font-bold tracking-tight">Client Fee Manager</h1>
                 <p className="text-xs text-muted-foreground">{user?.email}</p>
               </div>
             </div>

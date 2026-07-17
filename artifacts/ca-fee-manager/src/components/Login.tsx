@@ -43,10 +43,10 @@ export function Login() {
             <Calculator className="w-8 h-8" />
           </div>
           <h1 className="text-3xl font-bold tracking-tight mb-2">
-            CA Fee Manager
+            Client Fee Manager
           </h1>
           <p className="text-muted-foreground">
-            Professional fee tracking for chartered accountants
+            Professional fee tracking for your clients
           </p>
         </div>
 

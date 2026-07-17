@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Client, updateClient } from '@/hooks/useFirestore';
 import { Button } from '@/components/ui/button';
-import { Undo2 } from 'lucide-react';
+import { Undo2, ChevronDown, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface NoServiceRowProps {
@@ -11,6 +11,7 @@ interface NoServiceRowProps {
 }
 
 export function NoServiceRow({ client, uid, fyId }: NoServiceRowProps) {
+  const [open, setOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
 
   async function handleUndo() {
@@ -18,7 +19,7 @@ export function NoServiceRow({ client, uid, fyId }: NoServiceRowProps) {
     try {
       await updateClient(uid, fyId, client.id, { status: 'pending' });
       toast.success(`${client.name} moved back to pending`);
-    } catch (error) {
+    } catch {
       toast.error('Failed to update status');
     } finally {
       setUpdating(false);
@@ -26,25 +27,43 @@ export function NoServiceRow({ client, uid, fyId }: NoServiceRowProps) {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 p-4 border border-border rounded-lg bg-muted/30 status-transition row-enter" data-testid={`no-service-row-${client.id}`}>
-      <div className="flex items-center">
-        <div className="font-medium text-base text-muted-foreground">
-          {client.name}
+    <div
+      className="border border-border rounded-lg bg-muted/20 overflow-hidden transition-shadow hover:shadow-sm status-transition row-enter"
+      data-testid={`no-service-row-${client.id}`}
+    >
+      {/* ── Collapsed Header ── */}
+      <div
+        className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none hover:bg-muted/40 transition-colors"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="text-muted-foreground shrink-0">
+          {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        </span>
+
+        <span className="font-medium text-sm flex-1 truncate text-muted-foreground">{client.name}</span>
+
+        <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleUndo}
+            disabled={updating}
+            className="h-7 px-2.5 text-xs"
+            data-testid={`button-undo-no-service-${client.id}`}
+          >
+            <Undo2 className="w-3.5 h-3.5 mr-1" />
+            Undo
+          </Button>
         </div>
       </div>
 
-      <div className="flex items-end">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={handleUndo}
-          disabled={updating}
-          data-testid={`button-undo-no-service-${client.id}`}
-        >
-          <Undo2 className="w-4 h-4 mr-1" />
-          Undo
-        </Button>
-      </div>
+      {/* ── Expanded Body (shows comments if any) ── */}
+      {open && client.comments && (
+        <div className="border-t border-border px-4 py-3">
+          <p className="text-xs font-medium text-muted-foreground mb-1">Comments</p>
+          <p className="text-sm text-muted-foreground whitespace-pre-wrap">{client.comments}</p>
+        </div>
+      )}
     </div>
   );
 }
