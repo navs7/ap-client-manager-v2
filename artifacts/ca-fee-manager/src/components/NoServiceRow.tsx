@@ -31,7 +31,7 @@ export function NoServiceRow({ client, uid, fyId }: NoServiceRowProps) {
       className="border border-border rounded-lg bg-muted/20 overflow-hidden transition-shadow hover:shadow-sm status-transition row-enter"
       data-testid={`no-service-row-${client.id}`}
     >
-      {/* ── Collapsed Header ── */}
+      {/* Collapsed Header */}
       <div
         className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none hover:bg-muted/40 transition-colors"
         onClick={() => setOpen((o) => !o)}
@@ -57,11 +57,13 @@ export function NoServiceRow({ client, uid, fyId }: NoServiceRowProps) {
         </div>
       </div>
 
-      {/* ── Expanded Body (shows comments if any) ── */}
-      {open && client.comments && (
+      {/* Expanded Body — always shown when open */}
+      {open && (
         <div className="border-t border-border px-4 py-3">
           <p className="text-xs font-medium text-muted-foreground mb-1">Comments</p>
-          <p className="text-sm text-muted-foreground whitespace-pre-wrap">{client.comments}</p>
+          {client.comments
+            ? <p className="text-sm text-muted-foreground whitespace-pre-wrap">{client.comments}</p>
+            : <p className="text-xs text-muted-foreground/60 italic">&lt;no comment&gt;</p>}
         </div>
       )}
     </div>

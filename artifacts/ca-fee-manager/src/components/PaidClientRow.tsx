@@ -41,7 +41,7 @@ export function PaidClientRow({ client, uid, fyId }: PaidClientRowProps) {
       className="border border-accent/20 rounded-lg bg-accent/5 overflow-hidden transition-shadow hover:shadow-sm status-transition row-enter"
       data-testid={`paid-client-row-${client.id}`}
     >
-      {/* ── Collapsed Header ── */}
+      {/* Collapsed Header */}
       <div
         className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none hover:bg-accent/10 transition-colors"
         onClick={() => setOpen((o) => !o)}
@@ -76,7 +76,7 @@ export function PaidClientRow({ client, uid, fyId }: PaidClientRowProps) {
         </div>
       </div>
 
-      {/* ── Expanded Body ── */}
+      {/* Expanded Body */}
       {open && (
         <div className="border-t border-accent/20 px-4 py-4 space-y-3">
           <div className="grid grid-cols-2 gap-4">
@@ -89,12 +89,13 @@ export function PaidClientRow({ client, uid, fyId }: PaidClientRowProps) {
               <p className="text-sm font-mono font-semibold text-accent">{formatINR(client.feesReceived)}</p>
             </div>
           </div>
-          {client.comments && (
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">Comments</p>
-              <p className="text-sm text-foreground whitespace-pre-wrap">{client.comments}</p>
-            </div>
-          )}
+
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-muted-foreground">Comments</p>
+            {client.comments
+              ? <p className="text-sm text-foreground whitespace-pre-wrap">{client.comments}</p>
+              : <p className="text-xs text-muted-foreground/60 italic">&lt;no comment&gt;</p>}
+          </div>
         </div>
       )}
     </div>

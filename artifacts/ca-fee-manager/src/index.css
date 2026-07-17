@@ -374,4 +374,31 @@
       transform: translateY(0);
     }
   }
+
+  .row-exit {
+    animation: row-exit 0.32s cubic-bezier(0.4, 0, 1, 1) forwards;
+    pointer-events: none;
+  }
+
+  @keyframes row-exit {
+    0% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      max-height: 400px;
+    }
+    60% {
+      opacity: 0.1;
+      transform: translateY(10px) scale(0.97);
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(14px) scale(0.96);
+      max-height: 0;
+      margin-top: 0;
+      margin-bottom: 0;
+      padding-top: 0;
+      padding-bottom: 0;
+      border-width: 0;
+    }
+  }
 }
