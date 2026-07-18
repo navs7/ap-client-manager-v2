@@ -12,20 +12,19 @@ export function MetricsCard({ clients }: MetricsCardProps) {
     const totalClients = clients.length;
     const paidCount = clients.filter((c) => c.status === 'paid').length;
     const pendingCount = clients.filter((c) => c.status === 'pending').length;
-    const itrFiledCount = clients.filter((c) =>
-      (c.history || []).some((h) => h.action === 'ITR Filed')
-    ).length;
+    const itrFiledCount = clients.filter((c) => c.itrFiled === true).length;
 
     const totalQuoted = clients.reduce(
-      (sum, c) => sum + (c.quotedFees || 0),
+      (sum, c) => sum + (c.quotedFees || 0) + (c.otherDues || 0),
       0
     );
     const totalReceived = clients
       .filter((c) => c.status === 'paid' || c.status === 'partial')
       .reduce((sum, c) => sum + (c.feesReceived || 0), 0);
+    const totalFees = (c: Client) => (c.quotedFees || 0) + (c.otherDues || 0);
     const pending = clients
       .filter((c) => c.status !== 'paid' && c.status !== 'no_service')
-      .reduce((sum, c) => sum + Math.max(0, (c.quotedFees || 0) - (c.feesReceived || 0)), 0);
+      .reduce((sum, c) => sum + Math.max(0, totalFees(c) - (c.feesReceived || 0)), 0);
 
     return {
       totalClients,
@@ -94,7 +93,7 @@ export function MetricsCard({ clients }: MetricsCardProps) {
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-muted-foreground text-sm">
               <IndianRupee className="w-4 h-4" />
-              <span>Quoted Fees</span>
+              <span>Total Fees</span>
             </div>
             <div className="text-2xl font-bold tracking-tight font-mono" data-testid="metric-quoted-fees">
               {formatCurrency(metrics.totalQuoted)}

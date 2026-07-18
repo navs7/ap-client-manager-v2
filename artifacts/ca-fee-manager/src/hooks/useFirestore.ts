@@ -31,7 +31,9 @@ export interface Client {
   status: 'pending' | 'partial' | 'paid' | 'no_service';
   paymentType: 'partial' | 'discount' | null;
   quotedFees: number | null;
+  otherDues: number | null;
   feesReceived: number | null;
+  itrFiled: boolean;
   comments: string | null;
   history: HistoryEntry[];
   createdAt: Timestamp;
@@ -114,9 +116,13 @@ export async function createClient(uid: string, fyId: string, name: string) {
     {
       name,
       status: 'pending',
+      paymentType: null,
       quotedFees: null,
+      otherDues: null,
       feesReceived: null,
+      itrFiled: false,
       comments: null,
+      history: [],
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     }

@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { Settings, Upload } from 'lucide-react';
+import { Settings, Upload, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,6 +11,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { createClient } from '@/hooks/useFirestore';
 import { toast } from 'sonner';
 
@@ -21,6 +30,9 @@ interface SettingsMenuProps {
 export function SettingsMenu({ uid, fyId }: SettingsMenuProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+  const [showAddClient, setShowAddClient] = useState(false);
+  const [newClientName, setNewClientName] = useState('');
+  const [adding, setAdding] = useState(false);
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -70,6 +82,31 @@ export function SettingsMenu({ uid, fyId }: SettingsMenuProps) {
     }
   }
 
+  async function handleAddClient() {
+    const name = newClientName.trim();
+    if (!name) return;
+    if (!fyId) {
+      toast.error('Please select a financial year first');
+      return;
+    }
+    setAdding(true);
+    try {
+      await createClient(uid, fyId, name);
+      toast.success(`"${name}" added`);
+      setNewClientName('');
+      setShowAddClient(false);
+    } catch {
+      toast.error('Failed to add client');
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  function handleAddClientKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') handleAddClient();
+    if (e.key === 'Escape') { setShowAddClient(false); setNewClientName(''); }
+  }
+
   return (
     <>
       <input
@@ -81,6 +118,40 @@ export function SettingsMenu({ uid, fyId }: SettingsMenuProps) {
         data-testid="input-excel-file"
       />
 
+      {/* Add Client Dialog */}
+      <Dialog open={showAddClient} onOpenChange={(o) => { setShowAddClient(o); if (!o) setNewClientName(''); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add Client</DialogTitle>
+            <DialogDescription>
+              Enter the client's name to add them to the current financial year.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Input
+              autoFocus
+              placeholder="Client name"
+              value={newClientName}
+              onChange={(e) => setNewClientName(e.target.value)}
+              onKeyDown={handleAddClientKeyDown}
+              data-testid="input-new-client-name"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowAddClient(false); setNewClientName(''); }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddClient}
+              disabled={adding || !newClientName.trim()}
+              data-testid="button-confirm-add-client"
+            >
+              {adding ? 'Adding…' : 'Add Client'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="icon" title="Settings" data-testid="button-settings">
@@ -90,6 +161,14 @@ export function SettingsMenu({ uid, fyId }: SettingsMenuProps) {
         <DropdownMenuContent align="end" className="w-48">
           <DropdownMenuLabel>Manage</DropdownMenuLabel>
           <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => setShowAddClient(true)}
+            disabled={!fyId}
+            data-testid="menu-add-client"
+          >
+            <UserPlus className="w-4 h-4 mr-2 shrink-0" />
+            Add Client
+          </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => fileInputRef.current?.click()}
             disabled={importing || !fyId}

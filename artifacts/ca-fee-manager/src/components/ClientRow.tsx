@@ -56,6 +56,7 @@ function makeEntry(action: string): HistoryEntry {
 export function ClientRow({ client, uid, fyId }: ClientRowProps) {
   const [open, setOpen] = useState(false);
   const [quotedFees, setQuotedFees] = useState(client.quotedFees?.toString() || '');
+  const [otherDues, setOtherDues] = useState(client.otherDues?.toString() || '');
   const [feesReceived, setFeesReceived] = useState(client.feesReceived?.toString() || '');
   const [updating, setUpdating] = useState(false);
   const [feesReceivedEditing, setFeesReceivedEditing] = useState(false);
@@ -69,19 +70,25 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
   const [partialData, setPartialData] = useState<PartialDialogData | null>(null);
 
   const quotedTimeoutRef = useRef<NodeJS.Timeout>();
+  const otherDuesTimeoutRef = useRef<NodeJS.Timeout>();
   const receivedTimeoutRef = useRef<NodeJS.Timeout>();
 
   useEffect(() => {
     setQuotedFees(client.quotedFees?.toString() || '');
+    setOtherDues(client.otherDues?.toString() || '');
     setFeesReceived(client.feesReceived?.toString() || '');
-  }, [client.quotedFees, client.feesReceived]);
+  }, [client.quotedFees, client.otherDues, client.feesReceived]);
 
   useEffect(() => { if (open) setRecentFees(getRecentFees()); }, [open]);
 
   async function handleItrFiled() {
-    const entry = makeEntry('ITR Filed');
-    await updateClient(uid, fyId, client.id, { history: [...(client.history || []), entry] });
-    toast.success(`ITR filed noted for ${client.name}`);
+    const newValue = !client.itrFiled;
+    const entry = makeEntry(newValue ? 'ITR Filed' : 'ITR Status Removed');
+    await updateClient(uid, fyId, client.id, {
+      itrFiled: newValue,
+      history: [...(client.history || []), entry],
+    });
+    toast.success(newValue ? `ITR filed for ${client.name}` : `ITR status removed for ${client.name}`);
   }
 
   async function updateField(field: string, value: any) {
@@ -97,6 +104,15 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
       if (value !== '' && isNaN(num as number)) return;
       if (num !== null) { addRecentFee(num); setRecentFees(getRecentFees()); }
       updateField('quotedFees', num);
+    }, 600);
+  }
+  function handleOtherDuesChange(value: string) {
+    setOtherDues(value);
+    clearTimeout(otherDuesTimeoutRef.current);
+    otherDuesTimeoutRef.current = setTimeout(() => {
+      const num = value === '' ? null : Number(value);
+      if (value !== '' && isNaN(num as number)) return;
+      updateField('otherDues', num);
     }, 600);
   }
   function handleQuotedPill(fee: number) {
@@ -120,17 +136,17 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
     });
   }
 
-  // Checkmark quick-set: received = quoted (no popup needed)
+  // Checkmark quick-set: received = total fees
   async function handleCheckFees() {
     clearTimeout(receivedTimeoutRef.current);
-    setFeesReceived(quotedFees);
+    const totalNum = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
+    const totalStr = totalNum.toString();
+    setFeesReceived(totalStr);
     setFeesReceivedEditing(false);
-    const num = quotedFees === '' ? null : Number(quotedFees);
-    await updateField('feesReceived', num);
-    toast.success('Fees received set to quoted amount');
+    await updateField('feesReceived', totalNum || null);
+    toast.success('Fees received set to total fees');
   }
 
-  // Done editing fees received — save immediately, then check if popup needed
   async function handleDoneEditingFees() {
     clearTimeout(receivedTimeoutRef.current);
     const num = feesReceived === '' ? null : Number(feesReceived);
@@ -138,19 +154,18 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
     await updateField('feesReceived', num);
     setFeesReceivedEditing(false);
 
-    // Show partial/discount popup if needed
-    const quoted = client.quotedFees ?? (quotedFees ? Number(quotedFees) : null);
-    if (num !== null && quoted !== null && num < quoted && !client.paymentType) {
-      setPartialData({ received: num, quoted, diff: quoted - num, afterDone: false });
+    const totalFees = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
+    const effectiveQuoted = totalFees || (quotedFees ? Number(quotedFees) : null);
+    if (num !== null && effectiveQuoted !== null && num < effectiveQuoted && !client.paymentType) {
+      setPartialData({ received: num, quoted: effectiveQuoted, diff: effectiveQuoted - num, afterDone: false });
     }
   }
 
-  // ── Confirm Done ──
   function handleDoneClick() {
     const received = client.feesReceived;
-    const quoted = client.quotedFees;
-    if (received !== null && quoted !== null && received < quoted && !client.paymentType) {
-      setPartialData({ received, quoted, diff: quoted - received, afterDone: true });
+    const totalFees = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
+    if (received !== null && totalFees > 0 && received < totalFees && !client.paymentType) {
+      setPartialData({ received, quoted: totalFees, diff: totalFees - received, afterDone: true });
       return;
     }
     setShowDoneDialog(true);
@@ -174,7 +189,6 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
     }, 320);
   }
 
-  // ── Confirm No Service ──
   async function handleNoServiceConfirm() {
     setShowNoServiceDialog(false);
     setUpdating(true);
@@ -189,7 +203,6 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
     finally { setUpdating(false); }
   }
 
-  // ── Partial / Discount choice ──
   async function handlePartialChoice(choice: 'partial' | 'discount') {
     if (!partialData) return;
     const { received, quoted, diff, afterDone } = partialData;
@@ -213,13 +226,11 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
         }
       }, 320);
     } else {
-      // Discount
       const entry = makeEntry(
         `Discount of ${formatINR(diff)} applied. Effective fees: ${formatINR(received)}.`
       );
       history.push(entry);
       if (afterDone) {
-        // Proceed to mark as paid
         const doneEntry = makeEntry('Marked as Paid');
         history.push(doneEntry);
         setExiting(true);
@@ -233,14 +244,20 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
           }
         }, 320);
       } else {
-        // Stay pending, just record discount
         await updateClient(uid, fyId, client.id, { paymentType: 'discount', history });
         toast.success('Discount recorded');
       }
     }
   }
 
-  const quotedDisplay = formatINR(client.quotedFees);
+  const quotedNum = client.quotedFees ?? 0;
+  const otherDuesNum = client.otherDues ?? 0;
+  const totalFees = quotedNum + otherDuesNum;
+  const hasOtherDues = (client.otherDues ?? 0) > 0;
+
+  const headerFeeDisplay = hasOtherDues
+    ? formatINR(totalFees)
+    : formatINR(client.quotedFees);
   const receivedDisplay = formatINR(client.feesReceived);
 
   return (
@@ -295,7 +312,7 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
               {partialData && (
                 <>
                   <span className="font-medium text-foreground">{formatINR(partialData.received)}</span> received vs{' '}
-                  <span className="font-medium text-foreground">{formatINR(partialData.quoted)}</span> quoted —{' '}
+                  <span className="font-medium text-foreground">{formatINR(partialData.quoted)}</span> total —{' '}
                   <span className="font-semibold text-destructive">{formatINR(partialData.diff)}</span> difference.
                   How should this be recorded?
                 </>
@@ -351,9 +368,14 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
           </span>
           <span className="font-semibold text-sm flex-1 truncate">{client.name}</span>
           <div className="flex items-center gap-2 shrink-0">
-            {quotedDisplay && (
-              <span className="hidden sm:inline text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                {quotedDisplay}
+            {client.itrFiled && (
+              <span className="hidden sm:inline text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 px-2 py-0.5 rounded">
+                ITR ✓
+              </span>
+            )}
+            {headerFeeDisplay && (
+              <span className="hidden sm:inline text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded" title={hasOtherDues ? `Total (Quoted + Other Dues)` : 'Quoted Fees'}>
+                {hasOtherDues && <span className="mr-0.5 opacity-60">∑</span>}{headerFeeDisplay}
               </span>
             )}
             {receivedDisplay && (
@@ -373,11 +395,16 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
               <Check className="w-3.5 h-3.5 mr-1" />Done
             </Button>
             <Button
-              size="icon" variant="outline"
+              size="icon"
+              variant={client.itrFiled ? 'default' : 'outline'}
               onClick={handleItrFiled}
               disabled={updating || exiting}
-              title="ITR Filed"
-              className="h-7 w-7 shrink-0 text-blue-600 border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950"
+              title={client.itrFiled ? 'ITR Filed — click to unmark' : 'Mark ITR Filed'}
+              className={
+                client.itrFiled
+                  ? 'h-7 w-7 shrink-0 bg-blue-600 hover:bg-blue-700 text-white border-blue-600'
+                  : 'h-7 w-7 shrink-0 text-blue-600 border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950'
+              }
               data-testid={`button-itr-filed-${client.id}`}
             >
               <FileCheck2 className="w-3.5 h-3.5" />
@@ -398,8 +425,8 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
         {/* Expanded Body */}
         {open && (
           <div className="border-t border-border px-4 py-4 bg-card space-y-4">
+            {/* Quoted Fees + Other Dues */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Quoted Fees */}
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-muted-foreground">Quoted Fees</label>
                 <Input
@@ -423,54 +450,69 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
                 )}
               </div>
 
-              {/* Fees Received */}
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Fees Received</label>
-                {feesReceivedEditing ? (
-                  <div className="flex gap-1">
-                    <Input
-                      type="number" value={feesReceived}
-                      onChange={(e) => handleReceivedChange(e.target.value)}
-                      placeholder="0" className="font-mono" autoFocus
-                      data-testid={`input-received-${client.id}`}
-                    />
-                    <Button
-                      size="icon" variant="outline"
-                      onClick={handleDoneEditingFees}
-                      className="shrink-0 h-9 w-9 text-green-600 border-green-300 hover:bg-green-50 dark:hover:bg-green-950"
-                      title="Done editing"
-                    >
-                      <CheckCheck className="w-4 h-4" />
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="flex gap-1">
-                    <Button
-                      size="icon" variant="outline"
-                      onClick={handleCheckFees} disabled={!quotedFees}
-                      className="shrink-0 h-9 w-9 text-green-600 border-green-300 hover:bg-green-50 dark:hover:bg-green-950"
-                      title="Set fees received = quoted fees"
-                      data-testid={`button-check-fees-${client.id}`}
-                    >
-                      <Check className="w-4 h-4" />
-                    </Button>
-                    <div className="flex-1 h-9 px-3 flex items-center font-mono text-sm bg-muted/40 rounded-md border border-border min-w-0">
-                      {feesReceived
-                        ? <span>{formatINR(Number(feesReceived))}</span>
-                        : <span className="text-muted-foreground">—</span>}
-                    </div>
-                    <Button
-                      size="icon" variant="ghost"
-                      onClick={() => setFeesReceivedEditing(true)}
-                      className="shrink-0 h-9 w-9 text-muted-foreground hover:text-foreground"
-                      title="Edit fees received"
-                      data-testid={`button-edit-received-${client.id}`}
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
+                <label className="text-xs font-medium text-muted-foreground">Other Dues</label>
+                <Input
+                  type="number" value={otherDues}
+                  onChange={(e) => handleOtherDuesChange(e.target.value)}
+                  placeholder="0" className="font-mono"
+                  data-testid={`input-other-dues-${client.id}`}
+                />
+                {hasOtherDues && (
+                  <p className="text-xs text-muted-foreground font-mono">
+                    Total: <span className="font-semibold text-foreground">{formatINR(totalFees)}</span>
+                  </p>
                 )}
               </div>
+            </div>
+
+            {/* Fees Received */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Fees Received</label>
+              {feesReceivedEditing ? (
+                <div className="flex gap-1">
+                  <Input
+                    type="number" value={feesReceived}
+                    onChange={(e) => handleReceivedChange(e.target.value)}
+                    placeholder="0" className="font-mono" autoFocus
+                    data-testid={`input-received-${client.id}`}
+                  />
+                  <Button
+                    size="icon" variant="outline"
+                    onClick={handleDoneEditingFees}
+                    className="shrink-0 h-9 w-9 text-green-600 border-green-300 hover:bg-green-50 dark:hover:bg-green-950"
+                    title="Done editing"
+                  >
+                    <CheckCheck className="w-4 h-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex gap-1">
+                  <Button
+                    size="icon" variant="outline"
+                    onClick={handleCheckFees} disabled={!quotedFees && !otherDues}
+                    className="shrink-0 h-9 w-9 text-green-600 border-green-300 hover:bg-green-50 dark:hover:bg-green-950"
+                    title="Set fees received = total fees"
+                    data-testid={`button-check-fees-${client.id}`}
+                  >
+                    <Check className="w-4 h-4" />
+                  </Button>
+                  <div className="flex-1 h-9 px-3 flex items-center font-mono text-sm bg-muted/40 rounded-md border border-border min-w-0">
+                    {feesReceived
+                      ? <span>{formatINR(Number(feesReceived))}</span>
+                      : <span className="text-muted-foreground">—</span>}
+                  </div>
+                  <Button
+                    size="icon" variant="ghost"
+                    onClick={() => setFeesReceivedEditing(true)}
+                    className="shrink-0 h-9 w-9 text-muted-foreground hover:text-foreground"
+                    title="Edit fees received"
+                    data-testid={`button-edit-received-${client.id}`}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* Comment input + History */}

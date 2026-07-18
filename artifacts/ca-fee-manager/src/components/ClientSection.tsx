@@ -9,7 +9,15 @@ interface ClientSectionProps {
   clients: Client[];
   uid: string;
   fyId: string;
-  type: 'pending' | 'partial' | 'paid' | 'no_service';
+  type: 'pending' | 'partial' | 'paid' | 'no_service' | 'mixed';
+}
+
+function renderRow(client: Client, uid: string, fyId: string, type: ClientSectionProps['type']) {
+  const t = type === 'mixed' ? client.status : type;
+  if (t === 'pending') return <ClientRow key={client.id} client={client} uid={uid} fyId={fyId} />;
+  if (t === 'partial') return <PartialClientRow key={client.id} client={client} uid={uid} fyId={fyId} />;
+  if (t === 'paid') return <PaidClientRow key={client.id} client={client} uid={uid} fyId={fyId} />;
+  return <NoServiceRow key={client.id} client={client} uid={uid} fyId={fyId} />;
 }
 
 export function ClientSection({ title, clients, uid, fyId, type }: ClientSectionProps) {
@@ -24,12 +32,7 @@ export function ClientSection({ title, clients, uid, fyId, type }: ClientSection
         </span>
       </div>
       <div className="space-y-2">
-        {clients.map((client) => {
-          if (type === 'pending') return <ClientRow key={client.id} client={client} uid={uid} fyId={fyId} />;
-          if (type === 'partial') return <PartialClientRow key={client.id} client={client} uid={uid} fyId={fyId} />;
-          if (type === 'paid') return <PaidClientRow key={client.id} client={client} uid={uid} fyId={fyId} />;
-          return <NoServiceRow key={client.id} client={client} uid={uid} fyId={fyId} />;
-        })}
+        {clients.map((client) => renderRow(client, uid, fyId, type))}
       </div>
     </div>
   );

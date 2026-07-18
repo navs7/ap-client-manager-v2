@@ -12,7 +12,7 @@ interface PaidClientRowProps {
   fyId: string;
 }
 
-function formatINR(amount: number | null) {
+function formatINR(amount: number | null | undefined) {
   if (amount === null || amount === undefined) return '—';
   return new Intl.NumberFormat('en-IN', {
     style: 'currency', currency: 'INR',
@@ -25,9 +25,13 @@ export function PaidClientRow({ client, uid, fyId }: PaidClientRowProps) {
   const [updating, setUpdating] = useState(false);
 
   async function handleItrFiled() {
-    const entry = { id: crypto.randomUUID(), at: new Date().toISOString(), action: 'ITR Filed' };
-    await updateClient(uid, fyId, client.id, { history: [...(client.history || []), entry] });
-    toast.success(`ITR filed noted for ${client.name}`);
+    const newValue = !client.itrFiled;
+    const entry = { id: crypto.randomUUID(), at: new Date().toISOString(), action: newValue ? 'ITR Filed' : 'ITR Status Removed' };
+    await updateClient(uid, fyId, client.id, {
+      itrFiled: newValue,
+      history: [...(client.history || []), entry],
+    });
+    toast.success(newValue ? `ITR filed for ${client.name}` : `ITR status removed for ${client.name}`);
   }
 
   async function handleAddComment(text: string) {
@@ -49,6 +53,9 @@ export function PaidClientRow({ client, uid, fyId }: PaidClientRowProps) {
     finally { setUpdating(false); }
   }
 
+  const hasOtherDues = (client.otherDues ?? 0) > 0;
+  const totalFees = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
+
   return (
     <div
       className="border border-accent/20 rounded-lg bg-accent/5 overflow-hidden transition-shadow hover:shadow-sm status-transition row-enter"
@@ -64,8 +71,14 @@ export function PaidClientRow({ client, uid, fyId }: PaidClientRowProps) {
         </span>
         <span className="font-semibold text-sm flex-1 truncate">{client.name}</span>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="hidden sm:inline text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded">
-            {formatINR(client.quotedFees)}
+          {client.itrFiled && (
+            <span className="hidden sm:inline text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 px-2 py-0.5 rounded">
+              ITR ✓
+            </span>
+          )}
+          <span className="hidden sm:inline text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded" title={hasOtherDues ? 'Total Fees' : 'Quoted Fees'}>
+            {hasOtherDues && <span className="mr-0.5 opacity-60">∑</span>}
+            {hasOtherDues ? formatINR(totalFees) : formatINR(client.quotedFees)}
           </span>
           <span className="hidden sm:inline text-xs font-mono font-semibold text-accent bg-accent/10 px-2 py-0.5 rounded">
             {formatINR(client.feesReceived)}
@@ -73,9 +86,16 @@ export function PaidClientRow({ client, uid, fyId }: PaidClientRowProps) {
         </div>
         <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
           <Button
-            size="icon" variant="outline" onClick={handleItrFiled} disabled={updating}
-            title="ITR Filed"
-            className="h-7 w-7 text-blue-600 border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950"
+            size="icon"
+            variant={client.itrFiled ? 'default' : 'outline'}
+            onClick={handleItrFiled}
+            disabled={updating}
+            title={client.itrFiled ? 'ITR Filed — click to unmark' : 'Mark ITR Filed'}
+            className={
+              client.itrFiled
+                ? 'h-7 w-7 bg-blue-600 hover:bg-blue-700 text-white border-blue-600'
+                : 'h-7 w-7 text-blue-600 border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950'
+            }
             data-testid={`button-itr-paid-${client.id}`}
           >
             <FileCheck2 className="w-3.5 h-3.5" />
@@ -98,6 +118,18 @@ export function PaidClientRow({ client, uid, fyId }: PaidClientRowProps) {
               <p className="text-xs font-medium text-muted-foreground">Quoted Fees</p>
               <p className="text-sm font-mono font-medium">{formatINR(client.quotedFees)}</p>
             </div>
+            {hasOtherDues && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Other Dues</p>
+                <p className="text-sm font-mono font-medium">{formatINR(client.otherDues)}</p>
+              </div>
+            )}
+            {hasOtherDues && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Total Fees</p>
+                <p className="text-sm font-mono font-semibold">{formatINR(totalFees)}</p>
+              </div>
+            )}
             <div className="space-y-1">
               <p className="text-xs font-medium text-muted-foreground">Fees Received</p>
               <p className="text-sm font-mono font-semibold text-accent">{formatINR(client.feesReceived)}</p>

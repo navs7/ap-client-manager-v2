@@ -17,9 +17,13 @@ export function NoServiceRow({ client, uid, fyId }: NoServiceRowProps) {
   const [updating, setUpdating] = useState(false);
 
   async function handleItrFiled() {
-    const entry = { id: crypto.randomUUID(), at: new Date().toISOString(), action: 'ITR Filed' };
-    await updateClient(uid, fyId, client.id, { history: [...(client.history || []), entry] });
-    toast.success(`ITR filed noted for ${client.name}`);
+    const newValue = !client.itrFiled;
+    const entry = { id: crypto.randomUUID(), at: new Date().toISOString(), action: newValue ? 'ITR Filed' : 'ITR Status Removed' };
+    await updateClient(uid, fyId, client.id, {
+      itrFiled: newValue,
+      history: [...(client.history || []), entry],
+    });
+    toast.success(newValue ? `ITR filed for ${client.name}` : `ITR status removed for ${client.name}`);
   }
 
   async function handleAddComment(text: string) {
@@ -55,11 +59,25 @@ export function NoServiceRow({ client, uid, fyId }: NoServiceRowProps) {
         </span>
         <CalendarX className="w-3.5 h-3.5 text-red-500 shrink-0" />
         <span className="font-medium text-sm flex-1 truncate text-muted-foreground">{client.name}</span>
+        <div className="flex items-center gap-2 shrink-0">
+          {client.itrFiled && (
+            <span className="hidden sm:inline text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 px-2 py-0.5 rounded">
+              ITR ✓
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
           <Button
-            size="icon" variant="outline" onClick={handleItrFiled} disabled={updating}
-            title="ITR Filed"
-            className="h-7 w-7 text-blue-600 border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950"
+            size="icon"
+            variant={client.itrFiled ? 'default' : 'outline'}
+            onClick={handleItrFiled}
+            disabled={updating}
+            title={client.itrFiled ? 'ITR Filed — click to unmark' : 'Mark ITR Filed'}
+            className={
+              client.itrFiled
+                ? 'h-7 w-7 bg-blue-600 hover:bg-blue-700 text-white border-blue-600'
+                : 'h-7 w-7 text-blue-600 border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950'
+            }
             data-testid={`button-itr-no-service-${client.id}`}
           >
             <FileCheck2 className="w-3.5 h-3.5" />
