@@ -1,15 +1,17 @@
-# [Project name]
+# CA Fee Manager
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A mobile-first web app for Chartered Accountants to manage client fees, track payments, and organise work by financial year. Uses Firebase for authentication and data storage.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- **CA Fee Manager workflow** — starts the React/Vite frontend on port 5173 (`PORT=5173 BASE_PATH=/ pnpm --filter @workspace/ca-fee-manager run dev`)
+- **API Server workflow** — starts the Express API on port 8080 (`PORT=8080 pnpm --filter @workspace/api-server run dev`)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Required secrets: `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`
+- Runtime-managed: `DATABASE_URL` — Postgres connection string (injected by Replit automatically)
 
 ## Stack
 
