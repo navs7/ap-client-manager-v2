@@ -7,17 +7,23 @@ import {
 } from '@/components/ui/select';
 import { FinancialYear } from '@/hooks/useFirestore';
 
-/** Generate FY labels from 2000-2001 up to the upcoming FY, newest first.
- *  Indian FY runs Apr–Mar, so current FY start = this calendar year if month >= 4, else year-1.
- *  "Upcoming" = currentFYStart + 1.
- */
-function generateFYOptions(): string[] {
+/** Indian FY runs Apr–Mar. Returns the start calendar year of the current FY. */
+function currentFYStartYear(): number {
   const today = new Date();
   const month = today.getMonth() + 1; // 1-based
   const year = today.getFullYear();
-  const currentFYStart = month >= 4 ? year : year - 1;
-  const upcomingFYStart = currentFYStart + 1;
+  return month >= 4 ? year : year - 1;
+}
 
+/** Returns the current FY label, e.g. "2026-2027". */
+export function getCurrentFYName(): string {
+  const s = currentFYStartYear();
+  return `${s}-${s + 1}`;
+}
+
+/** Generate FY labels from 2000-2001 up to the upcoming FY, newest first. */
+function generateFYOptions(): string[] {
+  const upcomingFYStart = currentFYStartYear() + 1;
   const options: string[] = [];
   for (let y = upcomingFYStart; y >= 2000; y--) {
     options.push(`${y}-${y + 1}`);

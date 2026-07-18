@@ -6,7 +6,7 @@ import { useFinancialYears, useClients, createFinancialYear } from '@/hooks/useF
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ThemeToggle } from './ThemeToggle';
-import { FYSelector } from './FYSelector';
+import { FYSelector, getCurrentFYName } from './FYSelector';
 import { SettingsMenu } from './SettingsMenu';
 import { MetricsCard } from './MetricsCard';
 import { ClientSection } from './ClientSection';
@@ -20,11 +20,19 @@ export function Dashboard() {
   const { clients, loading: clientsLoading } = useClients(user?.uid, selectedYearId || undefined);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Auto-select current FY once years have loaded; create it in Firestore if missing.
   useEffect(() => {
-    if (!selectedYearId && years.length > 0) {
-      setSelectedYearId(years[0].id);
+    if (selectedYearId || yearsLoading || !user) return;
+    const currentFY = getCurrentFYName();
+    const existing = years.find((y) => y.name === currentFY);
+    if (existing) {
+      setSelectedYearId(existing.id);
+    } else {
+      createFinancialYear(user.uid, currentFY)
+        .then(setSelectedYearId)
+        .catch(() => toast.error('Failed to initialise current financial year'));
     }
-  }, [years, selectedYearId]);
+  }, [years, yearsLoading, selectedYearId, user]);
 
   async function handleSelectFY(fyName: string, existingId: string | null) {
     if (existingId) {
