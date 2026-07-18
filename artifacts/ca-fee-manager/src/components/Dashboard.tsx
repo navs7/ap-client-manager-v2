@@ -7,9 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ThemeToggle } from './ThemeToggle';
 import { FYSelector } from './FYSelector';
+import { SettingsMenu } from './SettingsMenu';
 import { MetricsCard } from './MetricsCard';
 import { ClientSection } from './ClientSection';
-import { ExcelImport } from './ExcelImport';
 import { Calculator, LogOut, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -20,7 +20,6 @@ export function Dashboard() {
   const { clients, loading: clientsLoading } = useClients(user?.uid, selectedYearId || undefined);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Auto-select first year if available
   useEffect(() => {
     if (!selectedYearId && years.length > 0) {
       setSelectedYearId(years[0].id);
@@ -49,7 +48,7 @@ export function Dashboard() {
   async function handleSignOut() {
     try {
       await signOut(auth);
-    } catch (error) {
+    } catch {
       toast.error('Failed to sign out');
     }
   }
@@ -87,15 +86,20 @@ export function Dashboard() {
 
       {/* FY Selector Bar */}
       <div className="sticky top-16 z-40 bg-background border-b border-border shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 justify-between">
-            <FYSelector
-              years={years}
-              selectedYearId={selectedYearId}
-              onSelectYear={setSelectedYearId}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <FYSelector
+                years={years}
+                selectedYearId={selectedYearId}
+                onSelectYear={setSelectedYearId}
+              />
+            </div>
+            <SettingsMenu
               uid={user?.uid || ''}
+              fyId={selectedYearId}
+              onYearCreated={setSelectedYearId}
             />
-            <ExcelImport uid={user?.uid || ''} fyId={selectedYearId} />
           </div>
         </div>
       </div>
@@ -109,7 +113,7 @@ export function Dashboard() {
         ) : years.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground mb-4">
-              No financial years found. Create one to get started.
+              No financial years found. Open settings to create one.
             </p>
           </div>
         ) : !selectedYearId ? (
@@ -118,11 +122,10 @@ export function Dashboard() {
           </div>
         ) : (
           <>
-            {/* Metrics */}
             <MetricsCard clients={clients} />
 
             {/* Search Bar */}
-            <div className="sticky top-[136px] z-30 bg-background py-2 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 border-b border-border">
+            <div className="sticky top-[125px] z-30 bg-background py-2 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 border-b border-border">
               <div className="relative max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
@@ -145,14 +148,13 @@ export function Dashboard() {
               </div>
             </div>
 
-            {/* Client Sections */}
             {clientsLoading ? (
               <div className="text-center py-12 text-muted-foreground">
                 Loading clients...
               </div>
             ) : clients.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
-                No clients yet. Import from Excel to get started.
+                No clients yet. Use Settings → Import from Excel to get started.
               </div>
             ) : (
               <div className="space-y-8">
