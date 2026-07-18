@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { Settings, Plus, Upload, FolderOpen } from 'lucide-react';
+import { Settings, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -10,67 +10,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { createFinancialYear, createClient } from '@/hooks/useFirestore';
+import { createClient } from '@/hooks/useFirestore';
 import { toast } from 'sonner';
 
 interface SettingsMenuProps {
   uid: string;
   fyId: string | null;
-  onYearCreated: (newId: string) => void;
 }
 
-/** Auto-inserts a hyphen after the 4th digit and strips non-numeric (except the hyphen). */
-function formatFYInput(raw: string, prev: string): string {
-  // Allow deleting past the hyphen naturally
-  const digits = raw.replace(/\D/g, '');
-  if (digits.length <= 4) return digits;
-  return `${digits.slice(0, 4)}-${digits.slice(4, 8)}`;
-}
-
-export function SettingsMenu({ uid, fyId, onYearCreated }: SettingsMenuProps) {
+export function SettingsMenu({ uid, fyId }: SettingsMenuProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
-  const [newFYOpen, setNewFYOpen] = useState(false);
-  const [fyName, setFyName] = useState('');
-  const [prevFyName, setPrevFyName] = useState('');
-  const [creating, setCreating] = useState(false);
 
-  // ── New FY ──────────────────────────────────────────────────────────
-  function handleFyInput(value: string) {
-    const formatted = formatFYInput(value, prevFyName);
-    setPrevFyName(formatted);
-    setFyName(formatted);
-  }
-
-  async function handleCreateFY() {
-    const fyPattern = /^\d{4}-\d{4}$/;
-    if (!fyPattern.test(fyName)) {
-      toast.error('Use format YYYY-YYYY (e.g. 2025-2026)');
-      return;
-    }
-    setCreating(true);
-    try {
-      const newId = await createFinancialYear(uid, fyName);
-      toast.success(`Created ${fyName}`);
-      onYearCreated(newId);
-      setNewFYOpen(false);
-      setFyName('');
-    } catch {
-      toast.error('Failed to create financial year');
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  // ── Excel Import ─────────────────────────────────────────────────────
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -121,7 +72,6 @@ export function SettingsMenu({ uid, fyId, onYearCreated }: SettingsMenuProps) {
 
   return (
     <>
-      {/* Hidden file input */}
       <input
         ref={fileInputRef}
         type="file"
@@ -131,23 +81,15 @@ export function SettingsMenu({ uid, fyId, onYearCreated }: SettingsMenuProps) {
         data-testid="input-excel-file"
       />
 
-      {/* Settings dropdown */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="icon" title="Settings" data-testid="button-settings">
             <Settings className="w-4 h-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuContent align="end" className="w-48">
           <DropdownMenuLabel>Manage</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => { setFyName(''); setNewFYOpen(true); }}
-            data-testid="menu-new-fy"
-          >
-            <Plus className="w-4 h-4 mr-2 shrink-0" />
-            New Financial Year
-          </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => fileInputRef.current?.click()}
             disabled={importing || !fyId}
@@ -158,43 +100,6 @@ export function SettingsMenu({ uid, fyId, onYearCreated }: SettingsMenuProps) {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-
-      {/* New FY dialog */}
-      <Dialog open={newFYOpen} onOpenChange={setNewFYOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create New Financial Year</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <label htmlFor="fy-name" className="text-sm font-medium">
-                Financial Year
-              </label>
-              <Input
-                id="fy-name"
-                value={fyName}
-                onChange={(e) => handleFyInput(e.target.value)}
-                placeholder="2025-2026"
-                maxLength={9}
-                className="font-mono tracking-wide"
-                data-testid="input-fy-name"
-                onKeyDown={(e) => { if (e.key === 'Enter') handleCreateFY(); }}
-              />
-              <p className="text-xs text-muted-foreground">
-                Type the start year — the hyphen is added automatically.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setNewFYOpen(false)} disabled={creating}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreateFY} disabled={creating} data-testid="button-create-fy">
-              {creating ? 'Creating…' : 'Create'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

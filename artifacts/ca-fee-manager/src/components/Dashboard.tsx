@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
-import { useFinancialYears, useClients } from '@/hooks/useFirestore';
+import { useFinancialYears, useClients, createFinancialYear } from '@/hooks/useFirestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ThemeToggle } from './ThemeToggle';
@@ -25,6 +25,19 @@ export function Dashboard() {
       setSelectedYearId(years[0].id);
     }
   }, [years, selectedYearId]);
+
+  async function handleSelectFY(fyName: string, existingId: string | null) {
+    if (existingId) {
+      setSelectedYearId(existingId);
+    } else {
+      try {
+        const newId = await createFinancialYear(user!.uid, fyName);
+        setSelectedYearId(newId);
+      } catch {
+        toast.error('Failed to open financial year');
+      }
+    }
+  }
 
   const filteredClients = useMemo(() => {
     if (!searchQuery.trim()) return clients;
@@ -88,17 +101,14 @@ export function Dashboard() {
       <div className="sticky top-16 z-40 bg-background border-b border-border shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
           <div className="flex items-center gap-2">
-            <div className="flex-1">
-              <FYSelector
-                years={years}
-                selectedYearId={selectedYearId}
-                onSelectYear={setSelectedYearId}
-              />
-            </div>
+            <FYSelector
+              years={years}
+              selectedYearId={selectedYearId}
+              onSelectFY={handleSelectFY}
+            />
             <SettingsMenu
               uid={user?.uid || ''}
               fyId={selectedYearId}
-              onYearCreated={setSelectedYearId}
             />
           </div>
         </div>
@@ -110,15 +120,9 @@ export function Dashboard() {
           <div className="text-center py-12 text-muted-foreground">
             Loading financial years...
           </div>
-        ) : years.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground mb-4">
-              No financial years found. Open settings to create one.
-            </p>
-          </div>
         ) : !selectedYearId ? (
           <div className="text-center py-12 text-muted-foreground">
-            Select a financial year to view clients
+            Select a financial year from the dropdown above
           </div>
         ) : (
           <>
