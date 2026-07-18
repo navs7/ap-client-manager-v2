@@ -5,24 +5,23 @@ import { Undo2, ChevronDown, ChevronRight, CalendarX, FileCheck2 } from 'lucide-
 import { toast } from 'sonner';
 import { HistoryLog } from './HistoryLog';
 import { CommentInput } from './CommentInput';
+import { TagSelector, TagChip } from './TagSelector';
 
 interface NoServiceRowProps {
   client: Client;
   uid: string;
   fyId: string;
+  allTags: string[];
 }
 
-export function NoServiceRow({ client, uid, fyId }: NoServiceRowProps) {
+export function NoServiceRow({ client, uid, fyId, allTags }: NoServiceRowProps) {
   const [open, setOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
 
   async function handleItrFiled() {
     const newValue = !client.itrFiled;
     const entry = { id: crypto.randomUUID(), at: new Date().toISOString(), action: newValue ? 'ITR Filed' : 'ITR Status Removed' };
-    await updateClient(uid, fyId, client.id, {
-      itrFiled: newValue,
-      history: [...(client.history || []), entry],
-    });
+    await updateClient(uid, fyId, client.id, { itrFiled: newValue, history: [...(client.history || []), entry] });
     toast.success(newValue ? `ITR filed for ${client.name}` : `ITR status removed for ${client.name}`);
   }
 
@@ -31,63 +30,55 @@ export function NoServiceRow({ client, uid, fyId }: NoServiceRowProps) {
     await updateClient(uid, fyId, client.id, { history: [...(client.history || []), entry] });
   }
 
+  async function handleTagsChange(tags: string[]) {
+    await updateClient(uid, fyId, client.id, { tags });
+  }
+
   async function handleUndo() {
     setUpdating(true);
     try {
       const entry = { id: crypto.randomUUID(), at: new Date().toISOString(), action: 'Moved back to Pending' };
-      await updateClient(uid, fyId, client.id, {
-        status: 'pending',
-        history: [...(client.history || []), entry],
-      });
+      await updateClient(uid, fyId, client.id, { status: 'pending', history: [...(client.history || []), entry] });
       toast.success(`${client.name} moved back to pending`);
     } catch { toast.error('Failed to update status'); }
     finally { setUpdating(false); }
   }
 
+  const clientTags = client.tags || [];
+
   return (
-    <div
-      className="border border-border rounded-lg bg-muted/20 overflow-hidden transition-shadow hover:shadow-sm status-transition row-enter"
-      data-testid={`no-service-row-${client.id}`}
-    >
+    <div className="border border-border rounded-lg bg-muted/20 overflow-hidden transition-shadow hover:shadow-sm status-transition row-enter" data-testid={`no-service-row-${client.id}`}>
       {/* Collapsed Header */}
-      <div
-        className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none hover:bg-muted/40 transition-colors"
-        onClick={() => setOpen((o) => !o)}
-      >
-        <span className="text-muted-foreground shrink-0">
+      <div className="flex items-start gap-3 px-4 py-3 cursor-pointer select-none hover:bg-muted/40 transition-colors" onClick={() => setOpen((o) => !o)}>
+        <span className="text-muted-foreground shrink-0 mt-0.5">
           {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </span>
-        <CalendarX className="w-3.5 h-3.5 text-red-500 shrink-0" />
-        <span className="font-medium text-sm flex-1 truncate text-muted-foreground">{client.name}</span>
-        <div className="flex items-center gap-2 shrink-0">
+        <CalendarX className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <span className="font-medium text-sm block truncate text-muted-foreground">{client.name}</span>
+          {clientTags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {clientTags.map((tag) => <TagChip key={tag} tag={tag} active small />)}
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0 mt-0.5">
           {client.itrFiled && (
             <span className="hidden sm:inline text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 px-2 py-0.5 rounded">
               ITR ✓
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-          <Button
-            size="icon"
-            variant={client.itrFiled ? 'default' : 'outline'}
-            onClick={handleItrFiled}
-            disabled={updating}
+        <div className="flex items-center gap-1.5 shrink-0 mt-0.5" onClick={(e) => e.stopPropagation()}>
+          <Button size="icon" variant={client.itrFiled ? 'default' : 'outline'} onClick={handleItrFiled} disabled={updating}
             title={client.itrFiled ? 'ITR Filed — click to unmark' : 'Mark ITR Filed'}
-            className={
-              client.itrFiled
-                ? 'h-7 w-7 bg-blue-600 hover:bg-blue-700 text-white border-blue-600'
-                : 'h-7 w-7 text-blue-600 border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950'
-            }
-            data-testid={`button-itr-no-service-${client.id}`}
-          >
+            className={client.itrFiled ? 'h-7 w-7 bg-blue-600 hover:bg-blue-700 text-white border-blue-600' : 'h-7 w-7 text-blue-600 border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950'}
+            data-testid={`button-itr-no-service-${client.id}`}>
             <FileCheck2 className="w-3.5 h-3.5" />
           </Button>
-          <Button
-            size="sm" variant="outline" onClick={handleUndo} disabled={updating}
-            className="h-7 px-2.5 text-xs"
-            data-testid={`button-undo-no-service-${client.id}`}
-          >
-            <Undo2 className="w-3.5 h-3.5 mr-1" />Undo
+          <Button size="icon" variant="outline" onClick={handleUndo} disabled={updating}
+            className="h-7 w-7" title="Undo — move back to Pending" data-testid={`button-undo-no-service-${client.id}`}>
+            <Undo2 className="w-3.5 h-3.5" />
           </Button>
         </div>
       </div>
@@ -95,8 +86,11 @@ export function NoServiceRow({ client, uid, fyId }: NoServiceRowProps) {
       {/* Expanded Body */}
       {open && (
         <div className="border-t border-border px-4 py-4 space-y-4">
-          <CommentInput onSubmit={handleAddComment} />
-          <HistoryLog history={client.history} />
+          <TagSelector selectedTags={clientTags} allTags={allTags} onChange={handleTagsChange} />
+          <div className="border-t border-border pt-3 space-y-4">
+            <CommentInput onSubmit={handleAddComment} />
+            <HistoryLog history={client.history} />
+          </div>
         </div>
       )}
     </div>

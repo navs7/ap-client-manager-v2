@@ -5,6 +5,7 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
+  setDoc,
   onSnapshot,
   query,
   orderBy,
@@ -12,6 +13,8 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+
+export const DEFAULT_TAGS = ['Salaried', 'Capital Gain', 'Business Owner', 'Foreign Assets'];
 
 export interface FinancialYear {
   id: string;
@@ -25,6 +28,10 @@ export interface HistoryEntry {
   at: string; // ISO 8601 client-side timestamp
 }
 
+export interface UserSettings {
+  customTags: string[];
+}
+
 export interface Client {
   id: string;
   name: string;
@@ -34,6 +41,7 @@ export interface Client {
   otherDues: number | null;
   feesReceived: number | null;
   itrFiled: boolean;
+  tags: string[];
   comments: string | null;
   history: HistoryEntry[];
   createdAt: Timestamp;
@@ -45,26 +53,12 @@ export function useFinancialYears(uid: string | undefined) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!uid) {
-      setYears([]);
-      setLoading(false);
-      return;
-    }
-
-    const q = query(
-      collection(db, `users/${uid}/financial_years`),
-      orderBy('createdAt', 'desc')
-    );
-
+    if (!uid) { setYears([]); setLoading(false); return; }
+    const q = query(collection(db, `users/${uid}/financial_years`), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const yearsData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as FinancialYear[];
-      setYears(yearsData);
+      setYears(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as FinancialYear[]);
       setLoading(false);
     });
-
     return unsubscribe;
   }, [uid]);
 
@@ -76,30 +70,39 @@ export function useClients(uid: string | undefined, fyId: string | undefined) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!uid || !fyId) {
-      setClients([]);
-      setLoading(false);
-      return;
-    }
-
+    if (!uid || !fyId) { setClients([]); setLoading(false); return; }
     const q = query(
       collection(db, `users/${uid}/financial_years/${fyId}/clients`),
       orderBy('createdAt', 'asc')
     );
-
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const clientsData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Client[];
-      setClients(clientsData);
+      setClients(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Client[]);
       setLoading(false);
     });
-
     return unsubscribe;
   }, [uid, fyId]);
 
   return { clients, loading };
+}
+
+export function useUserSettings(uid: string | undefined) {
+  const [settings, setSettings] = useState<UserSettings>({ customTags: [] });
+
+  useEffect(() => {
+    if (!uid) return;
+    const ref = doc(db, `users/${uid}/settings/app`);
+    return onSnapshot(ref, (snap) => {
+      if (snap.exists()) setSettings(snap.data() as UserSettings);
+      else setSettings({ customTags: [] });
+    });
+  }, [uid]);
+
+  return settings;
+}
+
+export async function updateUserSettings(uid: string, data: Partial<UserSettings>) {
+  const ref = doc(db, `users/${uid}/settings/app`);
+  await setDoc(ref, data, { merge: true });
 }
 
 export async function createFinancialYear(uid: string, name: string) {
@@ -121,6 +124,7 @@ export async function createClient(uid: string, fyId: string, name: string) {
       otherDues: null,
       feesReceived: null,
       itrFiled: false,
+      tags: [],
       comments: null,
       history: [],
       createdAt: serverTimestamp(),
@@ -136,24 +140,10 @@ export async function updateClient(
   clientId: string,
   data: Partial<Omit<Client, 'id' | 'createdAt'>>
 ) {
-  const clientRef = doc(
-    db,
-    `users/${uid}/financial_years/${fyId}/clients/${clientId}`
-  );
-  await updateDoc(clientRef, {
-    ...data,
-    updatedAt: serverTimestamp(),
-  });
+  const clientRef = doc(db, `users/${uid}/financial_years/${fyId}/clients/${clientId}`);
+  await updateDoc(clientRef, { ...data, updatedAt: serverTimestamp() });
 }
 
-export async function deleteClient(
-  uid: string,
-  fyId: string,
-  clientId: string
-) {
-  const clientRef = doc(
-    db,
-    `users/${uid}/financial_years/${fyId}/clients/${clientId}`
-  );
-  await deleteDoc(clientRef);
+export async function deleteClient(uid: string, fyId: string, clientId: string) {
+  await deleteDoc(doc(db, `users/${uid}/financial_years/${fyId}/clients/${clientId}`));
 }

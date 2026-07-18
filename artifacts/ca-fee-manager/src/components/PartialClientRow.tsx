@@ -2,36 +2,28 @@ import { useState } from 'react';
 import { Client, updateClient } from '@/hooks/useFirestore';
 import { Button } from '@/components/ui/button';
 import { Undo2, ChevronDown, ChevronRight, CheckCircle2, FileCheck2 } from 'lucide-react';
-
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { HistoryLog } from './HistoryLog';
 import { CommentInput } from './CommentInput';
+import { TagSelector, TagChip } from './TagSelector';
 
 interface PartialClientRowProps {
   client: Client;
   uid: string;
   fyId: string;
+  allTags: string[];
 }
 
 function formatINR(amount: number | null | undefined) {
   if (amount === null || amount === undefined) return '—';
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency', currency: 'INR',
-    minimumFractionDigits: 0, maximumFractionDigits: 0,
-  }).format(amount);
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
 }
 
-export function PartialClientRow({ client, uid, fyId }: PartialClientRowProps) {
+export function PartialClientRow({ client, uid, fyId, allTags }: PartialClientRowProps) {
   const [open, setOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [showPaidDialog, setShowPaidDialog] = useState(false);
@@ -39,10 +31,7 @@ export function PartialClientRow({ client, uid, fyId }: PartialClientRowProps) {
   async function handleItrFiled() {
     const newValue = !client.itrFiled;
     const entry = { id: crypto.randomUUID(), at: new Date().toISOString(), action: newValue ? 'ITR Filed' : 'ITR Status Removed' };
-    await updateClient(uid, fyId, client.id, {
-      itrFiled: newValue,
-      history: [...(client.history || []), entry],
-    });
+    await updateClient(uid, fyId, client.id, { itrFiled: newValue, history: [...(client.history || []), entry] });
     toast.success(newValue ? `ITR filed for ${client.name}` : `ITR status removed for ${client.name}`);
   }
 
@@ -51,22 +40,21 @@ export function PartialClientRow({ client, uid, fyId }: PartialClientRowProps) {
     await updateClient(uid, fyId, client.id, { history: [...(client.history || []), entry] });
   }
 
+  async function handleTagsChange(tags: string[]) {
+    await updateClient(uid, fyId, client.id, { tags });
+  }
+
   const hasOtherDues = (client.otherDues ?? 0) > 0;
   const totalFees = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
-  const pending =
-    client.feesReceived !== null
-      ? totalFees - client.feesReceived
-      : null;
+  const pending = client.feesReceived !== null ? totalFees - client.feesReceived : null;
+  const clientTags = client.tags || [];
 
   async function handlePaidInFull() {
     setShowPaidDialog(false);
     setUpdating(true);
     try {
       const entry = { id: crypto.randomUUID(), at: new Date().toISOString(), action: 'Marked as Paid in Full' };
-      await updateClient(uid, fyId, client.id, {
-        status: 'paid',
-        history: [...(client.history || []), entry],
-      });
+      await updateClient(uid, fyId, client.id, { status: 'paid', history: [...(client.history || []), entry] });
       toast.success(`${client.name} marked as paid in full`);
     } catch { toast.error('Failed to update status'); }
     finally { setUpdating(false); }
@@ -76,11 +64,7 @@ export function PartialClientRow({ client, uid, fyId }: PartialClientRowProps) {
     setUpdating(true);
     try {
       const entry = { id: crypto.randomUUID(), at: new Date().toISOString(), action: 'Moved back to Pending (partial payment cleared)' };
-      await updateClient(uid, fyId, client.id, {
-        status: 'pending',
-        paymentType: null,
-        history: [...(client.history || []), entry],
-      });
+      await updateClient(uid, fyId, client.id, { status: 'pending', paymentType: null, history: [...(client.history || []), entry] });
       toast.success(`${client.name} moved back to pending`);
     } catch { toast.error('Failed to update status'); }
     finally { setUpdating(false); }
@@ -93,40 +77,34 @@ export function PartialClientRow({ client, uid, fyId }: PartialClientRowProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Mark as Paid in Full?</AlertDialogTitle>
             <AlertDialogDescription>
-              <span className="font-medium">{client.name}</span> will be moved to{' '}
-              <span className="font-medium">Fees Paid</span>.
-              {pending !== null && pending > 0 && (
-                <> The remaining <span className="font-semibold text-foreground">{formatINR(pending)}</span> will be considered settled.</>
-              )}
+              <span className="font-medium">{client.name}</span> will be moved to <span className="font-medium">Fees Paid</span>.
+              {pending !== null && pending > 0 && <> The remaining <span className="font-semibold text-foreground">{formatINR(pending)}</span> will be considered settled.</>}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handlePaidInFull}
-              className="bg-accent hover:bg-accent/90 text-accent-foreground"
-            >
+            <AlertDialogAction onClick={handlePaidInFull} className="bg-accent hover:bg-accent/90 text-accent-foreground">
               <CheckCircle2 className="w-4 h-4 mr-1.5" />Confirm Paid in Full
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <div
-        className="border border-orange-200 dark:border-orange-800 rounded-lg bg-orange-50/50 dark:bg-orange-950/20 overflow-hidden transition-shadow hover:shadow-sm status-transition row-enter"
-        data-testid={`partial-client-row-${client.id}`}
-      >
+      <div className="border border-orange-200 dark:border-orange-800 rounded-lg bg-orange-50/50 dark:bg-orange-950/20 overflow-hidden transition-shadow hover:shadow-sm status-transition row-enter" data-testid={`partial-client-row-${client.id}`}>
         {/* Collapsed Header */}
-        <div
-          className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none hover:bg-orange-100/50 dark:hover:bg-orange-950/40 transition-colors"
-          onClick={() => setOpen((o) => !o)}
-        >
-          <span className="text-muted-foreground shrink-0">
+        <div className="flex items-start gap-3 px-4 py-3 cursor-pointer select-none hover:bg-orange-100/50 dark:hover:bg-orange-950/40 transition-colors" onClick={() => setOpen((o) => !o)}>
+          <span className="text-muted-foreground shrink-0 mt-0.5">
             {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           </span>
-          <span className="font-semibold text-sm flex-1 truncate">{client.name}</span>
-
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex-1 min-w-0">
+            <span className="font-semibold text-sm block truncate">{client.name}</span>
+            {clientTags.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {clientTags.map((tag) => <TagChip key={tag} tag={tag} active small />)}
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0 mt-0.5">
             {client.itrFiled && (
               <span className="hidden sm:inline text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 px-2 py-0.5 rounded">
                 ITR ✓
@@ -143,38 +121,20 @@ export function PartialClientRow({ client, uid, fyId }: PartialClientRowProps) {
               </span>
             )}
           </div>
-
-          <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-            <Button
-              size="sm"
-              onClick={() => setShowPaidDialog(true)}
-              disabled={updating}
-              className="h-7 px-2.5 text-xs bg-accent hover:bg-accent/90 text-accent-foreground"
-              data-testid={`button-paid-full-${client.id}`}
-            >
+          <div className="flex items-center gap-1.5 shrink-0 mt-0.5" onClick={(e) => e.stopPropagation()}>
+            <Button size="sm" onClick={() => setShowPaidDialog(true)} disabled={updating}
+              className="h-7 px-2.5 text-xs bg-accent hover:bg-accent/90 text-accent-foreground" data-testid={`button-paid-full-${client.id}`}>
               <CheckCircle2 className="w-3.5 h-3.5 mr-1" />Paid in Full
             </Button>
-            <Button
-              size="icon"
-              variant={client.itrFiled ? 'default' : 'outline'}
-              onClick={handleItrFiled}
-              disabled={updating}
+            <Button size="icon" variant={client.itrFiled ? 'default' : 'outline'} onClick={handleItrFiled} disabled={updating}
               title={client.itrFiled ? 'ITR Filed — click to unmark' : 'Mark ITR Filed'}
-              className={
-                client.itrFiled
-                  ? 'h-7 w-7 bg-blue-600 hover:bg-blue-700 text-white border-blue-600'
-                  : 'h-7 w-7 text-blue-600 border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950'
-              }
-              data-testid={`button-itr-partial-${client.id}`}
-            >
+              className={client.itrFiled ? 'h-7 w-7 bg-blue-600 hover:bg-blue-700 text-white border-blue-600' : 'h-7 w-7 text-blue-600 border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950'}
+              data-testid={`button-itr-partial-${client.id}`}>
               <FileCheck2 className="w-3.5 h-3.5" />
             </Button>
-            <Button
-              size="sm" variant="outline" onClick={handleUndo} disabled={updating}
-              className="h-7 px-2.5 text-xs"
-              data-testid={`button-undo-partial-${client.id}`}
-            >
-              <Undo2 className="w-3.5 h-3.5 mr-1" />Undo
+            <Button size="icon" variant="outline" onClick={handleUndo} disabled={updating}
+              className="h-7 w-7" title="Undo — move back to Pending" data-testid={`button-undo-partial-${client.id}`}>
+              <Undo2 className="w-3.5 h-3.5" />
             </Button>
           </div>
         </div>
@@ -201,17 +161,14 @@ export function PartialClientRow({ client, uid, fyId }: PartialClientRowProps) {
               )}
               <div className="space-y-1">
                 <p className="text-xs font-medium text-muted-foreground">Received</p>
-                <p className="text-sm font-mono font-semibold text-orange-600 dark:text-orange-400">
-                  {formatINR(client.feesReceived)}
-                </p>
+                <p className="text-sm font-mono font-semibold text-orange-600 dark:text-orange-400">{formatINR(client.feesReceived)}</p>
               </div>
               <div className="space-y-1">
                 <p className="text-xs font-medium text-muted-foreground">Pending</p>
-                <p className="text-sm font-mono font-semibold text-red-600 dark:text-red-400">
-                  {pending !== null ? formatINR(pending) : '—'}
-                </p>
+                <p className="text-sm font-mono font-semibold text-red-600 dark:text-red-400">{pending !== null ? formatINR(pending) : '—'}</p>
               </div>
             </div>
+            <TagSelector selectedTags={clientTags} allTags={allTags} onChange={handleTagsChange} />
             <div className="border-t border-orange-200 dark:border-orange-800 pt-3 space-y-4">
               <CommentInput onSubmit={handleAddComment} />
               <HistoryLog history={client.history} />
