@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Client, updateClient } from '@/hooks/useFirestore';
 import { Button } from '@/components/ui/button';
-import { Undo2, ChevronDown, ChevronRight, CheckCircle2 } from 'lucide-react';
+import { Undo2, ChevronDown, ChevronRight, CheckCircle2, FileCheck2 } from 'lucide-react';
 
 import {
   AlertDialog,
@@ -35,6 +35,12 @@ export function PartialClientRow({ client, uid, fyId }: PartialClientRowProps) {
   const [open, setOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [showPaidDialog, setShowPaidDialog] = useState(false);
+
+  async function handleItrFiled() {
+    const entry = { id: crypto.randomUUID(), at: new Date().toISOString(), action: 'ITR Filed' };
+    await updateClient(uid, fyId, client.id, { history: [...(client.history || []), entry] });
+    toast.success(`ITR filed noted for ${client.name}`);
+  }
 
   async function handleAddComment(text: string) {
     const entry = { id: crypto.randomUUID(), at: new Date().toISOString(), action: `Note: ${text}` };
@@ -138,6 +144,14 @@ export function PartialClientRow({ client, uid, fyId }: PartialClientRowProps) {
               data-testid={`button-paid-full-${client.id}`}
             >
               <CheckCircle2 className="w-3.5 h-3.5 mr-1" />Paid in Full
+            </Button>
+            <Button
+              size="icon" variant="outline" onClick={handleItrFiled} disabled={updating}
+              title="ITR Filed"
+              className="h-7 w-7 text-blue-600 border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950"
+              data-testid={`button-itr-partial-${client.id}`}
+            >
+              <FileCheck2 className="w-3.5 h-3.5" />
             </Button>
             <Button
               size="sm" variant="outline" onClick={handleUndo} disabled={updating}

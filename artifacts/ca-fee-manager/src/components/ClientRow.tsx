@@ -20,7 +20,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Check, UserX, Pencil, CheckCheck, ChevronDown, ChevronRight, CreditCard, Tag } from 'lucide-react';
+import { Check, UserX, Pencil, CheckCheck, ChevronDown, ChevronRight, CreditCard, Tag, FileCheck2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { HistoryLog } from './HistoryLog';
 import { CommentInput } from './CommentInput';
@@ -77,6 +77,12 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
   }, [client.quotedFees, client.feesReceived]);
 
   useEffect(() => { if (open) setRecentFees(getRecentFees()); }, [open]);
+
+  async function handleItrFiled() {
+    const entry = makeEntry('ITR Filed');
+    await updateClient(uid, fyId, client.id, { history: [...(client.history || []), entry] });
+    toast.success(`ITR filed noted for ${client.name}`);
+  }
 
   async function updateField(field: string, value: any) {
     try { await updateClient(uid, fyId, client.id, { [field]: value }); }
@@ -365,6 +371,16 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
               data-testid={`button-mark-paid-${client.id}`}
             >
               <Check className="w-3.5 h-3.5 mr-1" />Done
+            </Button>
+            <Button
+              size="icon" variant="outline"
+              onClick={handleItrFiled}
+              disabled={updating || exiting}
+              title="ITR Filed"
+              className="h-7 w-7 shrink-0 text-blue-600 border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950"
+              data-testid={`button-itr-filed-${client.id}`}
+            >
+              <FileCheck2 className="w-3.5 h-3.5" />
             </Button>
             <Button
               size="icon" variant="outline"

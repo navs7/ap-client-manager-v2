@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Client, updateClient } from '@/hooks/useFirestore';
 import { Button } from '@/components/ui/button';
-import { Undo2, ChevronDown, ChevronRight, CalendarX } from 'lucide-react';
+import { Undo2, ChevronDown, ChevronRight, CalendarX, FileCheck2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { HistoryLog } from './HistoryLog';
 import { CommentInput } from './CommentInput';
@@ -15,6 +15,12 @@ interface NoServiceRowProps {
 export function NoServiceRow({ client, uid, fyId }: NoServiceRowProps) {
   const [open, setOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
+
+  async function handleItrFiled() {
+    const entry = { id: crypto.randomUUID(), at: new Date().toISOString(), action: 'ITR Filed' };
+    await updateClient(uid, fyId, client.id, { history: [...(client.history || []), entry] });
+    toast.success(`ITR filed noted for ${client.name}`);
+  }
 
   async function handleAddComment(text: string) {
     const entry = { id: crypto.randomUUID(), at: new Date().toISOString(), action: `Note: ${text}` };
@@ -47,9 +53,17 @@ export function NoServiceRow({ client, uid, fyId }: NoServiceRowProps) {
         <span className="text-muted-foreground shrink-0">
           {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </span>
-        <CalendarX className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+        <CalendarX className="w-3.5 h-3.5 text-red-500 shrink-0" />
         <span className="font-medium text-sm flex-1 truncate text-muted-foreground">{client.name}</span>
-        <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <Button
+            size="icon" variant="outline" onClick={handleItrFiled} disabled={updating}
+            title="ITR Filed"
+            className="h-7 w-7 text-blue-600 border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950"
+            data-testid={`button-itr-no-service-${client.id}`}
+          >
+            <FileCheck2 className="w-3.5 h-3.5" />
+          </Button>
           <Button
             size="sm" variant="outline" onClick={handleUndo} disabled={updating}
             className="h-7 px-2.5 text-xs"
