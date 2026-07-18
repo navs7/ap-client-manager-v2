@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Client } from '@/hooks/useFirestore';
-import { IndianRupee, Users, CheckCircle2, Clock } from 'lucide-react';
+import { IndianRupee, Users, CheckCircle2, Clock, FileCheck2 } from 'lucide-react';
 
 interface MetricsCardProps {
   clients: Client[];
@@ -12,20 +12,26 @@ export function MetricsCard({ clients }: MetricsCardProps) {
     const totalClients = clients.length;
     const paidCount = clients.filter((c) => c.status === 'paid').length;
     const pendingCount = clients.filter((c) => c.status === 'pending').length;
+    const itrFiledCount = clients.filter((c) =>
+      (c.history || []).some((h) => h.action === 'ITR Filed')
+    ).length;
 
     const totalQuoted = clients.reduce(
       (sum, c) => sum + (c.quotedFees || 0),
       0
     );
     const totalReceived = clients
-      .filter((c) => c.status === 'paid')
+      .filter((c) => c.status === 'paid' || c.status === 'partial')
       .reduce((sum, c) => sum + (c.feesReceived || 0), 0);
-    const pending = totalQuoted - totalReceived;
+    const pending = clients
+      .filter((c) => c.status !== 'paid' && c.status !== 'no_service')
+      .reduce((sum, c) => sum + Math.max(0, (c.quotedFees || 0) - (c.feesReceived || 0)), 0);
 
     return {
       totalClients,
       paidCount,
       pendingCount,
+      itrFiledCount,
       totalQuoted,
       totalReceived,
       pending,
@@ -44,7 +50,7 @@ export function MetricsCard({ clients }: MetricsCardProps) {
   return (
     <Card className="border-card-border">
       <CardContent className="p-6">
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-6">
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-muted-foreground text-sm">
               <Users className="w-4 h-4" />
@@ -72,6 +78,16 @@ export function MetricsCard({ clients }: MetricsCardProps) {
             </div>
             <div className="text-2xl font-bold tracking-tight" data-testid="metric-pending-count">
               {metrics.pendingCount}
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-muted-foreground text-sm">
+              <FileCheck2 className="w-4 h-4 text-blue-500" />
+              <span>ITR Filed</span>
+            </div>
+            <div className="text-2xl font-bold tracking-tight text-blue-600 dark:text-blue-400" data-testid="metric-itr-filed">
+              {metrics.itrFiledCount}
             </div>
           </div>
 
