@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Client, updateClient } from '@/hooks/useFirestore';
 import { Button } from '@/components/ui/button';
 import { Undo2, ChevronDown, ChevronRight, CheckCircle2 } from 'lucide-react';
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,6 +15,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { HistoryLog } from './HistoryLog';
+import { CommentInput } from './CommentInput';
 
 interface PartialClientRowProps {
   client: Client;
@@ -33,6 +35,11 @@ export function PartialClientRow({ client, uid, fyId }: PartialClientRowProps) {
   const [open, setOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [showPaidDialog, setShowPaidDialog] = useState(false);
+
+  async function handleAddComment(text: string) {
+    const entry = { id: crypto.randomUUID(), at: new Date().toISOString(), action: `Note: ${text}` };
+    await updateClient(uid, fyId, client.id, { history: [...(client.history || []), entry] });
+  }
 
   const pending =
     client.quotedFees !== null && client.feesReceived !== null
@@ -163,13 +170,8 @@ export function PartialClientRow({ client, uid, fyId }: PartialClientRowProps) {
                 </p>
               </div>
             </div>
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">Comments</p>
-              {client.comments
-                ? <p className="text-sm text-foreground whitespace-pre-wrap">{client.comments}</p>
-                : <p className="text-xs text-muted-foreground/60 italic">&lt;no comment&gt;</p>}
-            </div>
-            <div className="border-t border-orange-200 dark:border-orange-800 pt-3">
+            <div className="border-t border-orange-200 dark:border-orange-800 pt-3 space-y-4">
+              <CommentInput onSubmit={handleAddComment} />
               <HistoryLog history={client.history} />
             </div>
           </div>

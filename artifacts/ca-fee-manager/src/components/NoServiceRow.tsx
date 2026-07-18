@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Undo2, ChevronDown, ChevronRight, CalendarX } from 'lucide-react';
 import { toast } from 'sonner';
 import { HistoryLog } from './HistoryLog';
+import { CommentInput } from './CommentInput';
 
 interface NoServiceRowProps {
   client: Client;
@@ -14,6 +15,11 @@ interface NoServiceRowProps {
 export function NoServiceRow({ client, uid, fyId }: NoServiceRowProps) {
   const [open, setOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
+
+  async function handleAddComment(text: string) {
+    const entry = { id: crypto.randomUUID(), at: new Date().toISOString(), action: `Note: ${text}` };
+    await updateClient(uid, fyId, client.id, { history: [...(client.history || []), entry] });
+  }
 
   async function handleUndo() {
     setUpdating(true);
@@ -57,15 +63,8 @@ export function NoServiceRow({ client, uid, fyId }: NoServiceRowProps) {
       {/* Expanded Body */}
       {open && (
         <div className="border-t border-border px-4 py-4 space-y-4">
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-muted-foreground">Comments</p>
-            {client.comments
-              ? <p className="text-sm text-muted-foreground whitespace-pre-wrap">{client.comments}</p>
-              : <p className="text-xs text-muted-foreground/60 italic">&lt;no comment&gt;</p>}
-          </div>
-          <div className="border-t border-border pt-3">
-            <HistoryLog history={client.history} />
-          </div>
+          <CommentInput onSubmit={handleAddComment} />
+          <HistoryLog history={client.history} />
         </div>
       )}
     </div>

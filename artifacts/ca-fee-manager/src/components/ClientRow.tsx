@@ -23,6 +23,7 @@ import {
 import { Check, UserX, Pencil, CheckCheck, ChevronDown, ChevronRight, CreditCard, Tag } from 'lucide-react';
 import { toast } from 'sonner';
 import { HistoryLog } from './HistoryLog';
+import { CommentInput } from './CommentInput';
 
 interface ClientRowProps {
   client: Client;
@@ -56,7 +57,6 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
   const [open, setOpen] = useState(false);
   const [quotedFees, setQuotedFees] = useState(client.quotedFees?.toString() || '');
   const [feesReceived, setFeesReceived] = useState(client.feesReceived?.toString() || '');
-  const [comments, setComments] = useState(client.comments || '');
   const [updating, setUpdating] = useState(false);
   const [feesReceivedEditing, setFeesReceivedEditing] = useState(false);
   const [recentFees, setRecentFees] = useState<number[]>([]);
@@ -70,13 +70,11 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
 
   const quotedTimeoutRef = useRef<NodeJS.Timeout>();
   const receivedTimeoutRef = useRef<NodeJS.Timeout>();
-  const commentsTimeoutRef = useRef<NodeJS.Timeout>();
 
   useEffect(() => {
     setQuotedFees(client.quotedFees?.toString() || '');
     setFeesReceived(client.feesReceived?.toString() || '');
-    setComments(client.comments || '');
-  }, [client.quotedFees, client.feesReceived, client.comments]);
+  }, [client.quotedFees, client.feesReceived]);
 
   useEffect(() => { if (open) setRecentFees(getRecentFees()); }, [open]);
 
@@ -109,12 +107,11 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
       updateField('feesReceived', num);
     }, 600);
   }
-  function handleCommentsChange(value: string) {
-    setComments(value);
-    clearTimeout(commentsTimeoutRef.current);
-    commentsTimeoutRef.current = setTimeout(() => {
-      updateField('comments', value || null);
-    }, 600);
+  async function handleAddComment(text: string) {
+    const entry = makeEntry(`Note: ${text}`);
+    await updateClient(uid, fyId, client.id, {
+      history: [...(client.history || []), entry],
+    });
   }
 
   // Checkmark quick-set: received = quoted (no popup needed)
@@ -460,23 +457,9 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
               </div>
             </div>
 
-            {/* Comments */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Comments</label>
-              <textarea
-                value={comments}
-                onChange={(e) => handleCommentsChange(e.target.value)}
-                placeholder="Add notes..." rows={3}
-                className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-[72px]"
-                data-testid={`input-comments-${client.id}`}
-              />
-              {!comments && (
-                <p className="text-xs text-muted-foreground/60 italic">&lt;no comment&gt;</p>
-              )}
-            </div>
-
-            {/* History */}
-            <div className="border-t border-border pt-3">
+            {/* Comment input + History */}
+            <div className="border-t border-border pt-3 space-y-4">
+              <CommentInput onSubmit={handleAddComment} />
               <HistoryLog history={client.history} />
             </div>
           </div>
