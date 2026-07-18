@@ -19,13 +19,21 @@ export interface FinancialYear {
   createdAt: Timestamp;
 }
 
+export interface HistoryEntry {
+  id: string;
+  action: string;
+  at: string; // ISO 8601 client-side timestamp
+}
+
 export interface Client {
   id: string;
   name: string;
-  status: 'pending' | 'paid' | 'no_service';
+  status: 'pending' | 'partial' | 'paid' | 'no_service';
+  paymentType: 'partial' | 'discount' | null;
   quotedFees: number | null;
   feesReceived: number | null;
   comments: string | null;
+  history: HistoryEntry[];
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

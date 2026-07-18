@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Client, updateClient } from '@/hooks/useFirestore';
 import { Button } from '@/components/ui/button';
-import { Undo2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Undo2, ChevronDown, ChevronRight, CalendarX } from 'lucide-react';
 import { toast } from 'sonner';
+import { HistoryLog } from './HistoryLog';
 
 interface NoServiceRowProps {
   client: Client;
@@ -17,13 +18,14 @@ export function NoServiceRow({ client, uid, fyId }: NoServiceRowProps) {
   async function handleUndo() {
     setUpdating(true);
     try {
-      await updateClient(uid, fyId, client.id, { status: 'pending' });
+      const entry = { id: crypto.randomUUID(), at: new Date().toISOString(), action: 'Moved back to Pending' };
+      await updateClient(uid, fyId, client.id, {
+        status: 'pending',
+        history: [...(client.history || []), entry],
+      });
       toast.success(`${client.name} moved back to pending`);
-    } catch {
-      toast.error('Failed to update status');
-    } finally {
-      setUpdating(false);
-    }
+    } catch { toast.error('Failed to update status'); }
+    finally { setUpdating(false); }
   }
 
   return (
@@ -39,31 +41,31 @@ export function NoServiceRow({ client, uid, fyId }: NoServiceRowProps) {
         <span className="text-muted-foreground shrink-0">
           {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </span>
-
+        <CalendarX className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
         <span className="font-medium text-sm flex-1 truncate text-muted-foreground">{client.name}</span>
-
         <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
           <Button
-            size="sm"
-            variant="outline"
-            onClick={handleUndo}
-            disabled={updating}
+            size="sm" variant="outline" onClick={handleUndo} disabled={updating}
             className="h-7 px-2.5 text-xs"
             data-testid={`button-undo-no-service-${client.id}`}
           >
-            <Undo2 className="w-3.5 h-3.5 mr-1" />
-            Undo
+            <Undo2 className="w-3.5 h-3.5 mr-1" />Undo
           </Button>
         </div>
       </div>
 
-      {/* Expanded Body — always shown when open */}
+      {/* Expanded Body */}
       {open && (
-        <div className="border-t border-border px-4 py-3">
-          <p className="text-xs font-medium text-muted-foreground mb-1">Comments</p>
-          {client.comments
-            ? <p className="text-sm text-muted-foreground whitespace-pre-wrap">{client.comments}</p>
-            : <p className="text-xs text-muted-foreground/60 italic">&lt;no comment&gt;</p>}
+        <div className="border-t border-border px-4 py-4 space-y-4">
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-muted-foreground">Comments</p>
+            {client.comments
+              ? <p className="text-sm text-muted-foreground whitespace-pre-wrap">{client.comments}</p>
+              : <p className="text-xs text-muted-foreground/60 italic">&lt;no comment&gt;</p>}
+          </div>
+          <div className="border-t border-border pt-3">
+            <HistoryLog history={client.history} />
+          </div>
         </div>
       )}
     </div>

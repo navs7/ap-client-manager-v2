@@ -2,22 +2,17 @@ import { Client } from '@/hooks/useFirestore';
 import { ClientRow } from './ClientRow';
 import { PaidClientRow } from './PaidClientRow';
 import { NoServiceRow } from './NoServiceRow';
+import { PartialClientRow } from './PartialClientRow';
 
 interface ClientSectionProps {
   title: string;
   clients: Client[];
   uid: string;
   fyId: string;
-  type: 'pending' | 'paid' | 'no_service';
+  type: 'pending' | 'partial' | 'paid' | 'no_service';
 }
 
-export function ClientSection({
-  title,
-  clients,
-  uid,
-  fyId,
-  type,
-}: ClientSectionProps) {
+export function ClientSection({ title, clients, uid, fyId, type }: ClientSectionProps) {
   if (clients.length === 0) return null;
 
   return (
@@ -30,29 +25,10 @@ export function ClientSection({
       </div>
       <div className="space-y-2">
         {clients.map((client) => {
-          if (type === 'pending') {
-            return (
-              <ClientRow key={client.id} client={client} uid={uid} fyId={fyId} />
-            );
-          } else if (type === 'paid') {
-            return (
-              <PaidClientRow
-                key={client.id}
-                client={client}
-                uid={uid}
-                fyId={fyId}
-              />
-            );
-          } else {
-            return (
-              <NoServiceRow
-                key={client.id}
-                client={client}
-                uid={uid}
-                fyId={fyId}
-              />
-            );
-          }
+          if (type === 'pending') return <ClientRow key={client.id} client={client} uid={uid} fyId={fyId} />;
+          if (type === 'partial') return <PartialClientRow key={client.id} client={client} uid={uid} fyId={fyId} />;
+          if (type === 'paid') return <PaidClientRow key={client.id} client={client} uid={uid} fyId={fyId} />;
+          return <NoServiceRow key={client.id} client={client} uid={uid} fyId={fyId} />;
         })}
       </div>
     </div>

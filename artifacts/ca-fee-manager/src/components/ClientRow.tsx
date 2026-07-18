@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Client, updateClient } from '@/hooks/useFirestore';
+import { Client, HistoryEntry, updateClient } from '@/hooks/useFirestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -12,8 +12,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Check, Ban, Pencil, CheckCheck, ChevronDown, ChevronRight } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Check, UserX, Pencil, CheckCheck, ChevronDown, ChevronRight, CreditCard, Tag } from 'lucide-react';
 import { toast } from 'sonner';
+import { HistoryLog } from './HistoryLog';
 
 interface ClientRowProps {
   client: Client;
@@ -25,9 +34,7 @@ function getRecentFees(): number[] {
   try {
     const stored = localStorage.getItem('recentQuotedFees');
     return stored ? JSON.parse(stored) : [];
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 function addRecentFee(fee: number) {
   const recent = getRecentFees().filter((f) => f !== fee);
@@ -37,11 +44,12 @@ function addRecentFee(fee: number) {
 function formatINR(amount: number | null | undefined) {
   if (amount === null || amount === undefined) return null;
   return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    style: 'currency', currency: 'INR',
+    minimumFractionDigits: 0, maximumFractionDigits: 0,
   }).format(amount);
+}
+function makeEntry(action: string): HistoryEntry {
+  return { id: crypto.randomUUID(), at: new Date().toISOString(), action };
 }
 
 export function ClientRow({ client, uid, fyId }: ClientRowProps) {
@@ -56,6 +64,10 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
   const [showDoneDialog, setShowDoneDialog] = useState(false);
   const [showNoServiceDialog, setShowNoServiceDialog] = useState(false);
 
+  // Partial / discount dialog
+  interface PartialDialogData { received: number; quoted: number; diff: number; afterDone: boolean; }
+  const [partialData, setPartialData] = useState<PartialDialogData | null>(null);
+
   const quotedTimeoutRef = useRef<NodeJS.Timeout>();
   const receivedTimeoutRef = useRef<NodeJS.Timeout>();
   const commentsTimeoutRef = useRef<NodeJS.Timeout>();
@@ -66,21 +78,16 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
     setComments(client.comments || '');
   }, [client.quotedFees, client.feesReceived, client.comments]);
 
-  useEffect(() => {
-    if (open) setRecentFees(getRecentFees());
-  }, [open]);
+  useEffect(() => { if (open) setRecentFees(getRecentFees()); }, [open]);
 
   async function updateField(field: string, value: any) {
-    try {
-      await updateClient(uid, fyId, client.id, { [field]: value });
-    } catch {
-      toast.error('Failed to update');
-    }
+    try { await updateClient(uid, fyId, client.id, { [field]: value }); }
+    catch { toast.error('Failed to update'); }
   }
 
   function handleQuotedChange(value: string) {
     setQuotedFees(value);
-    if (quotedTimeoutRef.current) clearTimeout(quotedTimeoutRef.current);
+    clearTimeout(quotedTimeoutRef.current);
     quotedTimeoutRef.current = setTimeout(() => {
       const num = value === '' ? null : Number(value);
       if (value !== '' && isNaN(num as number)) return;
@@ -88,33 +95,31 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
       updateField('quotedFees', num);
     }, 600);
   }
-
   function handleQuotedPill(fee: number) {
     setQuotedFees(fee.toString());
-    addRecentFee(fee);
-    setRecentFees(getRecentFees());
+    addRecentFee(fee); setRecentFees(getRecentFees());
     updateField('quotedFees', fee);
   }
-
   function handleReceivedChange(value: string) {
     setFeesReceived(value);
-    if (receivedTimeoutRef.current) clearTimeout(receivedTimeoutRef.current);
+    clearTimeout(receivedTimeoutRef.current);
     receivedTimeoutRef.current = setTimeout(() => {
       const num = value === '' ? null : Number(value);
       if (value !== '' && isNaN(num as number)) return;
       updateField('feesReceived', num);
     }, 600);
   }
-
   function handleCommentsChange(value: string) {
     setComments(value);
-    if (commentsTimeoutRef.current) clearTimeout(commentsTimeoutRef.current);
+    clearTimeout(commentsTimeoutRef.current);
     commentsTimeoutRef.current = setTimeout(() => {
       updateField('comments', value || null);
     }, 600);
   }
 
+  // Checkmark quick-set: received = quoted (no popup needed)
   async function handleCheckFees() {
+    clearTimeout(receivedTimeoutRef.current);
     setFeesReceived(quotedFees);
     setFeesReceivedEditing(false);
     const num = quotedFees === '' ? null : Number(quotedFees);
@@ -122,13 +127,42 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
     toast.success('Fees received set to quoted amount');
   }
 
-  // ── Confirm Done: animate out, then write to Firestore ──
+  // Done editing fees received — save immediately, then check if popup needed
+  async function handleDoneEditingFees() {
+    clearTimeout(receivedTimeoutRef.current);
+    const num = feesReceived === '' ? null : Number(feesReceived);
+    if (feesReceived !== '' && isNaN(num as number)) { setFeesReceivedEditing(false); return; }
+    await updateField('feesReceived', num);
+    setFeesReceivedEditing(false);
+
+    // Show partial/discount popup if needed
+    const quoted = client.quotedFees ?? (quotedFees ? Number(quotedFees) : null);
+    if (num !== null && quoted !== null && num < quoted && !client.paymentType) {
+      setPartialData({ received: num, quoted, diff: quoted - num, afterDone: false });
+    }
+  }
+
+  // ── Confirm Done ──
+  function handleDoneClick() {
+    const received = client.feesReceived;
+    const quoted = client.quotedFees;
+    if (received !== null && quoted !== null && received < quoted && !client.paymentType) {
+      setPartialData({ received, quoted, diff: quoted - received, afterDone: true });
+      return;
+    }
+    setShowDoneDialog(true);
+  }
+
   function handleDoneConfirm() {
     setShowDoneDialog(false);
     setExiting(true);
     setTimeout(async () => {
       try {
-        await updateClient(uid, fyId, client.id, { status: 'paid' });
+        const entry = makeEntry('Marked as Paid');
+        await updateClient(uid, fyId, client.id, {
+          status: 'paid',
+          history: [...(client.history || []), entry],
+        });
         toast.success(`${client.name} marked as done`);
       } catch {
         toast.error('Failed to update status');
@@ -142,12 +176,64 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
     setShowNoServiceDialog(false);
     setUpdating(true);
     try {
-      await updateClient(uid, fyId, client.id, { status: 'no_service' });
+      const entry = makeEntry('Marked as No Service');
+      await updateClient(uid, fyId, client.id, {
+        status: 'no_service',
+        history: [...(client.history || []), entry],
+      });
       toast.success(`${client.name} marked as no service`);
-    } catch {
-      toast.error('Failed to update status');
-    } finally {
-      setUpdating(false);
+    } catch { toast.error('Failed to update status'); }
+    finally { setUpdating(false); }
+  }
+
+  // ── Partial / Discount choice ──
+  async function handlePartialChoice(choice: 'partial' | 'discount') {
+    if (!partialData) return;
+    const { received, quoted, diff, afterDone } = partialData;
+    setPartialData(null);
+
+    const history = [...(client.history || [])];
+
+    if (choice === 'partial') {
+      const entry = makeEntry(
+        `Partial payment of ${formatINR(received)} received. ${formatINR(diff)} still pending.`
+      );
+      history.push(entry);
+      setExiting(true);
+      setTimeout(async () => {
+        try {
+          await updateClient(uid, fyId, client.id, { status: 'partial', paymentType: 'partial', history });
+          toast.success(`${client.name} moved to Partial Payments`);
+        } catch {
+          toast.error('Failed to update status');
+          setExiting(false);
+        }
+      }, 320);
+    } else {
+      // Discount
+      const entry = makeEntry(
+        `Discount of ${formatINR(diff)} applied. Effective fees: ${formatINR(received)}.`
+      );
+      history.push(entry);
+      if (afterDone) {
+        // Proceed to mark as paid
+        const doneEntry = makeEntry('Marked as Paid');
+        history.push(doneEntry);
+        setExiting(true);
+        setTimeout(async () => {
+          try {
+            await updateClient(uid, fyId, client.id, { status: 'paid', paymentType: 'discount', history });
+            toast.success(`${client.name} marked as done`);
+          } catch {
+            toast.error('Failed to update status');
+            setExiting(false);
+          }
+        }, 320);
+      } else {
+        // Stay pending, just record discount
+        await updateClient(uid, fyId, client.id, { paymentType: 'discount', history });
+        toast.success('Discount recorded');
+      }
     }
   }
 
@@ -156,14 +242,14 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
 
   return (
     <>
-      {/* ── Confirmation: Done ── */}
+      {/* ── Done confirmation ── */}
       <AlertDialog open={showDoneDialog} onOpenChange={setShowDoneDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Mark as Done?</AlertDialogTitle>
             <AlertDialogDescription>
-              <span className="font-medium">{client.name}</span> will be moved to the{' '}
-              <span className="font-medium">Fees Paid</span> section.
+              <span className="font-medium">{client.name}</span> will be moved to{' '}
+              <span className="font-medium">Fees Paid</span>.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -172,35 +258,80 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
               onClick={handleDoneConfirm}
               className="bg-accent hover:bg-accent/90 text-accent-foreground"
             >
-              <Check className="w-4 h-4 mr-1.5" />
-              Confirm Done
+              <Check className="w-4 h-4 mr-1.5" />Confirm Done
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ── Confirmation: No Service ── */}
+      {/* ── No Service confirmation ── */}
       <AlertDialog open={showNoServiceDialog} onOpenChange={setShowNoServiceDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>No Service This Year?</AlertDialogTitle>
             <AlertDialogDescription>
-              <span className="font-medium">{client.name}</span> will be moved to the{' '}
-              <span className="font-medium">No Service</span> section. You can undo this anytime.
+              <span className="font-medium">{client.name}</span> will be moved to{' '}
+              <span className="font-medium">No Service</span>. You can undo this anytime.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleNoServiceConfirm}
-              variant="destructive"
-            >
-              <Ban className="w-4 h-4 mr-1.5" />
-              Confirm No Service
+            <AlertDialogAction onClick={handleNoServiceConfirm} variant="destructive">
+              <UserX className="w-4 h-4 mr-1.5" />Confirm No Service
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── Partial / Discount dialog ── */}
+      <Dialog open={!!partialData} onOpenChange={(o) => { if (!o) setPartialData(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Fees Less Than Quoted</DialogTitle>
+            <DialogDescription>
+              {partialData && (
+                <>
+                  <span className="font-medium text-foreground">{formatINR(partialData.received)}</span> received vs{' '}
+                  <span className="font-medium text-foreground">{formatINR(partialData.quoted)}</span> quoted —{' '}
+                  <span className="font-semibold text-destructive">{formatINR(partialData.diff)}</span> difference.
+                  How should this be recorded?
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3 py-2">
+            <button
+              onClick={() => handlePartialChoice('partial')}
+              className="flex flex-col items-center gap-2 p-4 rounded-lg border-2 border-orange-200 bg-orange-50 hover:bg-orange-100 hover:border-orange-400 dark:border-orange-800 dark:bg-orange-950/30 dark:hover:bg-orange-950/60 transition-colors text-left"
+            >
+              <CreditCard className="w-6 h-6 text-orange-500" />
+              <div>
+                <p className="font-semibold text-sm">Partial Payment</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {partialData && formatINR(partialData.diff)} still pending
+                </p>
+              </div>
+            </button>
+            <button
+              onClick={() => handlePartialChoice('discount')}
+              className="flex flex-col items-center gap-2 p-4 rounded-lg border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 hover:border-blue-400 dark:border-blue-800 dark:bg-blue-950/30 dark:hover:bg-blue-950/60 transition-colors text-left"
+            >
+              <Tag className="w-6 h-6 text-blue-500" />
+              <div>
+                <p className="font-semibold text-sm">Discount</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {partialData && formatINR(partialData.diff)} discount given
+                </p>
+              </div>
+            </button>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setPartialData(null)}>
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Card ── */}
       <div
@@ -215,9 +346,7 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
           <span className="text-muted-foreground shrink-0">
             {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           </span>
-
           <span className="font-semibold text-sm flex-1 truncate">{client.name}</span>
-
           <div className="flex items-center gap-2 shrink-0">
             {quotedDisplay && (
               <span className="hidden sm:inline text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded">
@@ -230,31 +359,25 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
               </span>
             )}
           </div>
-
-          <div
-            className="flex items-center gap-1.5 shrink-0"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
             <Button
               size="sm"
-              onClick={() => setShowDoneDialog(true)}
+              onClick={handleDoneClick}
               disabled={updating || exiting}
               className="h-7 px-2.5 text-xs bg-accent hover:bg-accent/90 text-accent-foreground"
               data-testid={`button-mark-paid-${client.id}`}
             >
-              <Check className="w-3.5 h-3.5 mr-1" />
-              Done
+              <Check className="w-3.5 h-3.5 mr-1" />Done
             </Button>
             <Button
-              size="icon"
-              variant="outline"
+              size="icon" variant="outline"
               onClick={() => setShowNoServiceDialog(true)}
               disabled={updating || exiting}
               title="No Service"
               className="h-7 w-7 shrink-0"
               data-testid={`button-no-service-${client.id}`}
             >
-              <Ban className="w-3.5 h-3.5" />
+              <UserX className="w-3.5 h-3.5" />
             </Button>
           </div>
         </div>
@@ -267,19 +390,16 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-muted-foreground">Quoted Fees</label>
                 <Input
-                  type="number"
-                  value={quotedFees}
+                  type="number" value={quotedFees}
                   onChange={(e) => handleQuotedChange(e.target.value)}
-                  placeholder="0"
-                  className="font-mono"
+                  placeholder="0" className="font-mono"
                   data-testid={`input-quoted-${client.id}`}
                 />
                 {recentFees.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 pt-0.5">
                     {recentFees.map((fee) => (
                       <button
-                        key={fee}
-                        onClick={() => handleQuotedPill(fee)}
+                        key={fee} onClick={() => handleQuotedPill(fee)}
                         className="text-xs px-2 py-0.5 rounded-full border border-border bg-muted hover:bg-accent/20 hover:border-accent/40 text-muted-foreground hover:text-foreground transition-colors font-mono"
                         title={`Set to ${formatINR(fee)}`}
                       >
@@ -296,18 +416,14 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
                 {feesReceivedEditing ? (
                   <div className="flex gap-1">
                     <Input
-                      type="number"
-                      value={feesReceived}
+                      type="number" value={feesReceived}
                       onChange={(e) => handleReceivedChange(e.target.value)}
-                      placeholder="0"
-                      className="font-mono"
-                      autoFocus
+                      placeholder="0" className="font-mono" autoFocus
                       data-testid={`input-received-${client.id}`}
                     />
                     <Button
-                      size="icon"
-                      variant="outline"
-                      onClick={() => setFeesReceivedEditing(false)}
+                      size="icon" variant="outline"
+                      onClick={handleDoneEditingFees}
                       className="shrink-0 h-9 w-9 text-green-600 border-green-300 hover:bg-green-50 dark:hover:bg-green-950"
                       title="Done editing"
                     >
@@ -317,10 +433,8 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
                 ) : (
                   <div className="flex gap-1">
                     <Button
-                      size="icon"
-                      variant="outline"
-                      onClick={handleCheckFees}
-                      disabled={!quotedFees}
+                      size="icon" variant="outline"
+                      onClick={handleCheckFees} disabled={!quotedFees}
                       className="shrink-0 h-9 w-9 text-green-600 border-green-300 hover:bg-green-50 dark:hover:bg-green-950"
                       title="Set fees received = quoted fees"
                       data-testid={`button-check-fees-${client.id}`}
@@ -333,8 +447,7 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
                         : <span className="text-muted-foreground">—</span>}
                     </div>
                     <Button
-                      size="icon"
-                      variant="ghost"
+                      size="icon" variant="ghost"
                       onClick={() => setFeesReceivedEditing(true)}
                       className="shrink-0 h-9 w-9 text-muted-foreground hover:text-foreground"
                       title="Edit fees received"
@@ -353,14 +466,18 @@ export function ClientRow({ client, uid, fyId }: ClientRowProps) {
               <textarea
                 value={comments}
                 onChange={(e) => handleCommentsChange(e.target.value)}
-                placeholder="Add notes..."
-                rows={3}
+                placeholder="Add notes..." rows={3}
                 className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-[72px]"
                 data-testid={`input-comments-${client.id}`}
               />
               {!comments && (
                 <p className="text-xs text-muted-foreground/60 italic">&lt;no comment&gt;</p>
               )}
+            </div>
+
+            {/* History */}
+            <div className="border-t border-border pt-3">
+              <HistoryLog history={client.history} />
             </div>
           </div>
         )}

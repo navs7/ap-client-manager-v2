@@ -57,6 +57,10 @@ export function Dashboard() {
     () => filteredClients.filter((c) => c.status === 'pending'),
     [filteredClients]
   );
+  const partialClients = useMemo(
+    () => filteredClients.filter((c) => c.status === 'partial'),
+    [filteredClients]
+  );
   const paidClients = useMemo(
     () => filteredClients.filter((c) => c.status === 'paid'),
     [filteredClients]
@@ -176,6 +180,13 @@ export function Dashboard() {
                   uid={user?.uid || ''}
                   fyId={selectedYearId}
                   type="pending"
+                />
+                <ClientSection
+                  title="Partial Payments"
+                  clients={partialClients}
+                  uid={user?.uid || ''}
+                  fyId={selectedYearId}
+                  type="partial"
                 />
                 <ClientSection
                   title="Fees Paid"
