@@ -1,6 +1,6 @@
 import { useRef, useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
-import { Settings, Upload, UserPlus, Tags, Plus, Trash2, Search, X } from 'lucide-react';
+import { Settings, Upload, UserPlus, Tags, Plus, Trash2, Search, X, FileDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -56,6 +56,25 @@ export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
     if (!q) return clients;
     return clients.filter((c) => c.name.toLowerCase().includes(q));
   }, [clients, deleteSearch]);
+
+  // ── Sample Excel download ───────────────────────────────────────────────────
+  function downloadSampleExcel() {
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['Client Name'],
+      ['Rahul Sharma'],
+      ['Priya Patel'],
+      ['Amit Gupta'],
+      ['Sunita Joshi'],
+      ['Vikram Singh'],
+      ['Deepa Mehta'],
+      ['Arun Kumar'],
+    ]);
+    // Column width
+    ws['!cols'] = [{ wch: 30 }];
+    XLSX.utils.book_append_sheet(wb, ws, 'Clients');
+    XLSX.writeFile(wb, 'client-import-sample.xlsx');
+  }
 
   // ── Excel import ────────────────────────────────────────────────────────────
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -320,6 +339,9 @@ export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
           <DropdownMenuItem onClick={() => fileInputRef.current?.click()} disabled={importing || !fyId} data-testid="menu-import-excel">
             <Upload className="w-4 h-4 mr-2 shrink-0" />
             {importing ? 'Importing…' : 'Import from Excel'}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={downloadSampleExcel} data-testid="menu-sample-excel">
+            <FileDown className="w-4 h-4 mr-2 shrink-0" />Download Sample
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem

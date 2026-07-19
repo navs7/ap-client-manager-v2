@@ -22,15 +22,8 @@ interface ClientRowProps {
   allTags: string[];
 }
 
-function getRecentFees(): number[] {
-  try { const s = localStorage.getItem('recentQuotedFees'); return s ? JSON.parse(s) : []; }
-  catch { return []; }
-}
-function addRecentFee(fee: number) {
-  const r = getRecentFees().filter((f) => f !== fee);
-  r.unshift(fee);
-  localStorage.setItem('recentQuotedFees', JSON.stringify(r.slice(0, 4)));
-}
+const FIXED_FEE_PILLS = [1000, 1500, 2000, 2500, 3000, 4000];
+
 function formatINR(amount: number | null | undefined) {
   if (amount === null || amount === undefined) return null;
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
@@ -46,7 +39,6 @@ export function ClientRow({ client, uid, fyId, allTags }: ClientRowProps) {
   const [feesReceived, setFeesReceived] = useState(client.feesReceived?.toString() || '');
   const [updating, setUpdating] = useState(false);
   const [feesReceivedEditing, setFeesReceivedEditing] = useState(false);
-  const [recentFees, setRecentFees] = useState<number[]>([]);
   const [exiting, setExiting] = useState(false);
   const [showDoneDialog, setShowDoneDialog] = useState(false);
   const [showNoServiceDialog, setShowNoServiceDialog] = useState(false);
@@ -63,8 +55,6 @@ export function ClientRow({ client, uid, fyId, allTags }: ClientRowProps) {
     setOtherDues(client.otherDues?.toString() || '');
     setFeesReceived(client.feesReceived?.toString() || '');
   }, [client.quotedFees, client.otherDues, client.feesReceived]);
-
-  useEffect(() => { if (open) setRecentFees(getRecentFees()); }, [open]);
 
   async function handleItrFiled() {
     const newValue = !client.itrFiled;
@@ -103,7 +93,6 @@ export function ClientRow({ client, uid, fyId, allTags }: ClientRowProps) {
   }
   function handleQuotedPill(fee: number) {
     setQuotedFees(fee.toString());
-    addRecentFee(fee); setRecentFees(getRecentFees());
     updateField('quotedFees', fee);
   }
   function handleReceivedChange(value: string) {
@@ -364,17 +353,15 @@ export function ClientRow({ client, uid, fyId, allTags }: ClientRowProps) {
                 <label className="text-xs font-medium text-muted-foreground">Quoted Fees</label>
                 <Input type="number" value={quotedFees} onChange={(e) => handleQuotedChange(e.target.value)}
                   placeholder="0" className="font-mono" data-testid={`input-quoted-${client.id}`} />
-                {recentFees.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pt-0.5">
-                    {recentFees.map((fee) => (
-                      <button key={fee} onClick={() => handleQuotedPill(fee)}
-                        className="text-xs px-2 py-0.5 rounded-full border border-border bg-muted hover:bg-accent/20 hover:border-accent/40 text-muted-foreground hover:text-foreground transition-colors font-mono"
-                        title={`Set to ${formatINR(fee)}`}>
-                        {formatINR(fee)}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  {FIXED_FEE_PILLS.map((fee) => (
+                    <button key={fee} onClick={() => handleQuotedPill(fee)}
+                      className="text-xs px-2 py-0.5 rounded-full border border-border bg-muted hover:bg-accent/20 hover:border-accent/40 text-muted-foreground hover:text-foreground transition-colors font-mono"
+                      title={`Set to ${formatINR(fee)}`}>
+                      {formatINR(fee)}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-muted-foreground">Other Dues</label>

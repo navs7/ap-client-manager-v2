@@ -236,7 +236,7 @@ export function Dashboard() {
               </div>
 
               {/* Row 2: status quick-pills */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
+              <div className="flex items-center flex-wrap gap-1.5">
                 {QUICK_PILLS.map((value) => {
                   const opt = STATUS_FILTERS.find((o) => o.value === value)!;
                   const isActive = activeFilter === value;
@@ -261,7 +261,7 @@ export function Dashboard() {
 
               {/* Row 3: tag filter pills (only when tags exist) */}
               {allTags.length > 0 && (
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
+                <div className="flex items-center flex-wrap gap-1.5">
                   <span className="text-xs text-muted-foreground shrink-0 font-medium">Tags:</span>
                   {allTags.map((tag) => {
                     const isActive = tagFilters.includes(tag);
