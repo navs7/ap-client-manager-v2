@@ -78,7 +78,6 @@ export function ClientRow({ client, uid, fyId, allTags }: ClientRowProps) {
     quotedTimeoutRef.current = setTimeout(() => {
       const num = value === '' ? null : Number(value);
       if (value !== '' && isNaN(num as number)) return;
-      if (num !== null) { addRecentFee(num); setRecentFees(getRecentFees()); }
       updateField('quotedFees', num);
     }, 600);
   }
