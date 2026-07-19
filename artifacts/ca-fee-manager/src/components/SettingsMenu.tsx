@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
-import { Settings, Upload, UserPlus, Tags, Plus, X } from 'lucide-react';
+import { Settings, Upload, UserPlus, Tags, Plus, Trash2, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -10,16 +10,28 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
-import { createClient, updateUserSettings, useUserSettings, DEFAULT_TAGS } from '@/hooks/useFirestore';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { createClient, deleteClient, updateUserSettings, useUserSettings, DEFAULT_TAGS, Client } from '@/hooks/useFirestore';
 import { TagChip } from './TagSelector';
 import { toast } from 'sonner';
 
 interface SettingsMenuProps {
   uid: string;
   fyId: string | null;
+  clients: Client[];
 }
 
-export function SettingsMenu({ uid, fyId }: SettingsMenuProps) {
+const STATUS_LABELS: Record<Client['status'], { label: string; className: string }> = {
+  pending:    { label: 'Pending',    className: 'bg-muted text-muted-foreground border-border' },
+  partial:    { label: 'Partial',    className: 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-400 dark:border-orange-800' },
+  paid:       { label: 'Paid',       className: 'bg-accent/10 text-accent border-accent/30' },
+  no_service: { label: 'No Service', className: 'bg-red-50 text-red-600 border-red-200 dark:bg-red-950/20 dark:text-red-400 dark:border-red-800' },
+};
+
+export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
 
@@ -32,6 +44,18 @@ export function SettingsMenu({ uid, fyId }: SettingsMenuProps) {
   const [showManageTags, setShowManageTags] = useState(false);
   const [newTagName, setNewTagName] = useState('');
   const { customTags } = useUserSettings(uid || undefined);
+
+  // Delete clients
+  const [showDeleteClients, setShowDeleteClients] = useState(false);
+  const [deleteSearch, setDeleteSearch] = useState('');
+  const [pendingDelete, setPendingDelete] = useState<Client | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const filteredForDelete = useMemo(() => {
+    const q = deleteSearch.trim().toLowerCase();
+    if (!q) return clients;
+    return clients.filter((c) => c.name.toLowerCase().includes(q));
+  }, [clients, deleteSearch]);
 
   // ── Excel import ────────────────────────────────────────────────────────────
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -75,6 +99,18 @@ export function SettingsMenu({ uid, fyId }: SettingsMenuProps) {
       setShowAddClient(false);
     } catch { toast.error('Failed to add client'); }
     finally { setAdding(false); }
+  }
+
+  // ── Delete client ───────────────────────────────────────────────────────────
+  async function handleConfirmDelete() {
+    if (!pendingDelete || !fyId) return;
+    setDeleting(true);
+    try {
+      await deleteClient(uid, fyId, pendingDelete.id);
+      toast.success(`"${pendingDelete.name}" deleted`);
+      setPendingDelete(null);
+    } catch { toast.error('Failed to delete client'); }
+    finally { setDeleting(false); }
   }
 
   // ── Manage custom tags ──────────────────────────────────────────────────────
@@ -125,6 +161,101 @@ export function SettingsMenu({ uid, fyId }: SettingsMenuProps) {
         </DialogContent>
       </Dialog>
 
+      {/* ── Delete Clients Dialog ── */}
+      <Dialog open={showDeleteClients} onOpenChange={(o) => { setShowDeleteClients(o); if (!o) setDeleteSearch(''); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Clients</DialogTitle>
+            <DialogDescription>
+              Permanently remove a client and all their data. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Search within dialog */}
+          {clients.length > 5 && (
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Search clients…"
+                value={deleteSearch}
+                onChange={(e) => setDeleteSearch(e.target.value)}
+                className="pl-9 pr-8"
+              />
+              {deleteSearch && (
+                <button onClick={() => setDeleteSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Client list */}
+          <div className="max-h-[340px] overflow-y-auto -mx-1 px-1 space-y-1">
+            {clients.length === 0 ? (
+              <p className="text-center text-sm text-muted-foreground py-8">No clients in this financial year.</p>
+            ) : filteredForDelete.length === 0 ? (
+              <p className="text-center text-sm text-muted-foreground py-6">No clients match "{deleteSearch}".</p>
+            ) : (
+              filteredForDelete.map((client) => {
+                const s = STATUS_LABELS[client.status];
+                return (
+                  <div
+                    key={client.id}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-muted/50 transition-colors group"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-medium truncate block">{client.name}</span>
+                    </div>
+                    <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded border ${s.className}`}>
+                      {s.label}
+                    </span>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => setPendingDelete(client)}
+                      className="shrink-0 h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                      title={`Delete ${client.name}`}
+                      data-testid={`button-delete-client-${client.id}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowDeleteClients(false); setDeleteSearch(''); }}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete Confirmation ── */}
+      <AlertDialog open={!!pendingDelete} onOpenChange={(o) => { if (!o) setPendingDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete "{pendingDelete?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove <span className="font-medium text-foreground">{pendingDelete?.name}</span> and all their history, fees, and notes. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              disabled={deleting}
+              variant="destructive"
+              className="gap-1.5"
+              data-testid="button-confirm-delete"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              {deleting ? 'Deleting…' : 'Delete Client'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* ── Manage Tags Dialog ── */}
       <Dialog open={showManageTags} onOpenChange={(o) => { setShowManageTags(o); if (!o) setNewTagName(''); }}>
         <DialogContent className="sm:max-w-sm">
@@ -133,15 +264,12 @@ export function SettingsMenu({ uid, fyId }: SettingsMenuProps) {
             <DialogDescription>Add custom tags to categorise your clients. Built-in tags cannot be removed.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            {/* Built-in tags (read-only) */}
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-muted-foreground">Built-in Tags</p>
               <div className="flex flex-wrap gap-1.5">
                 {DEFAULT_TAGS.map((tag) => <TagChip key={tag} tag={tag} active />)}
               </div>
             </div>
-
-            {/* Custom tags */}
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-muted-foreground">Custom Tags</p>
               {customTags.length === 0 ? (
@@ -154,8 +282,6 @@ export function SettingsMenu({ uid, fyId }: SettingsMenuProps) {
                 </div>
               )}
             </div>
-
-            {/* Add new tag */}
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-muted-foreground">Add Custom Tag</p>
               <div className="flex gap-2">
@@ -194,6 +320,15 @@ export function SettingsMenu({ uid, fyId }: SettingsMenuProps) {
           <DropdownMenuItem onClick={() => fileInputRef.current?.click()} disabled={importing || !fyId} data-testid="menu-import-excel">
             <Upload className="w-4 h-4 mr-2 shrink-0" />
             {importing ? 'Importing…' : 'Import from Excel'}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => setShowDeleteClients(true)}
+            disabled={!fyId || clients.length === 0}
+            className="text-destructive focus:text-destructive focus:bg-destructive/10"
+            data-testid="menu-delete-clients"
+          >
+            <Trash2 className="w-4 h-4 mr-2 shrink-0" />Delete Clients
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setShowManageTags(true)} data-testid="menu-manage-tags">

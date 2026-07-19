@@ -142,7 +142,7 @@ export function Dashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
           <div className="flex items-center gap-2">
             <FYSelector years={years} selectedYearId={selectedYearId} onSelectFY={handleSelectFY} />
-            <SettingsMenu uid={user?.uid || ''} fyId={selectedYearId} />
+            <SettingsMenu uid={user?.uid || ''} fyId={selectedYearId} clients={clients} />
           </div>
         </div>
       </div>
