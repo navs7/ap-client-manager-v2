@@ -1,8 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
+import { Switch, Route } from 'wouter';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { Login } from '@/components/Login';
 import { Dashboard } from '@/components/Dashboard';
+import { AnalyticsDashboard } from '@/components/AnalyticsDashboard';
 
 const queryClient = new QueryClient();
 
@@ -20,7 +22,14 @@ function AppContent() {
     );
   }
 
-  return user ? <Dashboard /> : <Login />;
+  if (!user) return <Login />;
+
+  return (
+    <Switch>
+      <Route path="/analytics" component={AnalyticsDashboard} />
+      <Route component={Dashboard} />
+    </Switch>
+  );
 }
 
 function App() {
