@@ -324,9 +324,9 @@ export function ClientRow({ client, uid, fyId, allTags }: ClientRowProps) {
           </div>
           <div className="flex items-center gap-1.5 shrink-0 mt-0.5" onClick={(e) => e.stopPropagation()}>
             <Button size="sm" onClick={handleDoneClick} disabled={updating || exiting}
-              className="h-7 px-2.5 text-xs bg-accent hover:bg-accent/90 text-accent-foreground"
+              className="h-7 w-7 px-0 sm:w-auto sm:px-2.5 text-xs bg-accent hover:bg-accent/90 text-accent-foreground"
               data-testid={`button-mark-paid-${client.id}`}>
-              <Check className="w-3.5 h-3.5 mr-1" />Done
+              <Check className="w-3.5 h-3.5 sm:mr-1" /><span className="hidden sm:inline">Done</span>
             </Button>
             <Button size="icon"
               variant={client.itrFiled ? 'default' : 'outline'}
