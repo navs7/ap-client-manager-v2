@@ -1,7 +1,7 @@
 import { useRef, useState, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import * as XLSX from 'xlsx';
-import { Settings, Upload, UserPlus, Tags, Plus, Trash2, Search, X, FileDown, BarChart2 } from 'lucide-react';
+import { Settings, Upload, UserPlus, Tags, Plus, Trash2, Search, X, FileDown, BarChart2, MessageSquare, Check, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -15,7 +15,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { createClient, deleteClient, updateUserSettings, useUserSettings, DEFAULT_TAGS, Client } from '@/hooks/useFirestore';
+import { createClient, deleteClient, updateUserSettings, useUserSettings, DEFAULT_TAGS, DEFAULT_WA_MESSAGES, Client } from '@/hooks/useFirestore';
 import { TagChip } from './TagSelector';
 import { toast } from 'sonner';
 
@@ -45,7 +45,13 @@ export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
   // Manage tags
   const [showManageTags, setShowManageTags] = useState(false);
   const [newTagName, setNewTagName] = useState('');
-  const { customTags } = useUserSettings(uid || undefined);
+  const { customTags, waMessages, waTemplate } = useUserSettings(uid || undefined);
+
+  // WhatsApp message templates
+  const [showWAMessages, setShowWAMessages] = useState(false);
+  const [selectedMsgKey, setSelectedMsgKey] = useState<string | null>(null); // 'builtin-0'..'builtin-4' | 'saved-0'..'saved-n'
+  const [editText, setEditText] = useState('');
+  const [savingTpl, setSavingTpl] = useState(false);
 
   // Delete clients
   const [showDeleteClients, setShowDeleteClients] = useState(false);
@@ -160,6 +166,71 @@ export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
       await updateUserSettings(uid, { customTags: customTags.filter((t) => t !== tag) });
       toast.success(`Tag "${tag}" removed`);
     } catch { toast.error('Failed to remove tag'); }
+  }
+
+  // ── WhatsApp message templates ──────────────────────────────────────────────
+  function openWAMessages() {
+    // Pre-select whatever is currently active
+    if (waTemplate) {
+      const builtinIdx = DEFAULT_WA_MESSAGES.indexOf(waTemplate);
+      if (builtinIdx !== -1) {
+        setSelectedMsgKey(`builtin-${builtinIdx}`);
+      } else {
+        const savedIdx = waMessages.indexOf(waTemplate);
+        setSelectedMsgKey(savedIdx !== -1 ? `saved-${savedIdx}` : null);
+      }
+      setEditText(waTemplate);
+    } else {
+      setSelectedMsgKey('builtin-0');
+      setEditText(DEFAULT_WA_MESSAGES[0]);
+    }
+    setShowWAMessages(true);
+  }
+
+  function selectMessage(key: string, text: string) {
+    setSelectedMsgKey(key);
+    setEditText(text);
+  }
+
+  async function handleSetActiveTemplate() {
+    const text = editText.trim();
+    if (!text || !uid) return;
+    setSavingTpl(true);
+    try {
+      await updateUserSettings(uid, { waTemplate: text });
+      toast.success('WhatsApp template updated');
+    } catch { toast.error('Failed to save template'); }
+    finally { setSavingTpl(false); }
+  }
+
+  async function handleSaveNewMessage() {
+    const text = editText.trim();
+    if (!text || !uid) return;
+    if (DEFAULT_WA_MESSAGES.includes(text)) { toast.error('This is already a built-in message'); return; }
+    if (waMessages.includes(text)) { toast.error('This message is already saved'); return; }
+    setSavingTpl(true);
+    try {
+      const updated = [...waMessages, text];
+      await updateUserSettings(uid, { waMessages: updated, waTemplate: text });
+      setSelectedMsgKey(`saved-${updated.length - 1}`);
+      toast.success('Message saved and set as active');
+    } catch { toast.error('Failed to save message'); }
+    finally { setSavingTpl(false); }
+  }
+
+  async function handleDeleteSavedMessage(index: number) {
+    if (!uid) return;
+    const updated = waMessages.filter((_, i) => i !== index);
+    try {
+      const deletedText = waMessages[index];
+      const newTemplate = waTemplate === deletedText ? null : waTemplate;
+      await updateUserSettings(uid, { waMessages: updated, waTemplate: newTemplate });
+      if (selectedMsgKey === `saved-${index}`) {
+        setSelectedMsgKey('builtin-0');
+        setEditText(DEFAULT_WA_MESSAGES[0]);
+      }
+      toast.success('Message deleted');
+    } catch { toast.error('Failed to delete message'); }
   }
 
   return (
@@ -283,6 +354,118 @@ export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* ── WhatsApp Messages Dialog ── */}
+      <Dialog open={showWAMessages} onOpenChange={(o) => { setShowWAMessages(o); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>WhatsApp Message Templates</DialogTitle>
+            <DialogDescription>
+              Select a template to use when sending WhatsApp reminders. Use{' '}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">{'{name}'}</code>,{' '}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">{'{amount}'}</code>, and{' '}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">{'{fy}'}</code> as placeholders.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-1">
+            {/* Built-in messages */}
+            <p className="text-xs font-medium text-muted-foreground">Built-in Templates</p>
+            <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+              {DEFAULT_WA_MESSAGES.map((msg, i) => {
+                const key = `builtin-${i}`;
+                const isActive = waTemplate === msg || (!waTemplate && i === 0);
+                const isSelected = selectedMsgKey === key;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => selectMessage(key, msg)}
+                    className={`w-full text-left text-sm px-3 py-2 rounded-lg border transition-colors ${
+                      isSelected
+                        ? 'border-primary bg-primary/5 text-foreground'
+                        : 'border-border hover:bg-muted/60 text-muted-foreground'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className="flex-1 line-clamp-2 leading-snug">{msg}</span>
+                      {isActive && <Check className="w-3.5 h-3.5 shrink-0 mt-0.5 text-primary" />}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Saved messages */}
+            {waMessages.length > 0 && (
+              <>
+                <p className="text-xs font-medium text-muted-foreground">Saved Messages</p>
+                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                  {waMessages.map((msg, i) => {
+                    const key = `saved-${i}`;
+                    const isActive = waTemplate === msg;
+                    const isSelected = selectedMsgKey === key;
+                    return (
+                      <div key={key} className="flex items-start gap-1.5">
+                        <button
+                          onClick={() => selectMessage(key, msg)}
+                          className={`flex-1 text-left text-sm px-3 py-2 rounded-lg border transition-colors ${
+                            isSelected
+                              ? 'border-primary bg-primary/5 text-foreground'
+                              : 'border-border hover:bg-muted/60 text-muted-foreground'
+                          }`}
+                        >
+                          <div className="flex items-start gap-2">
+                            <span className="flex-1 line-clamp-2 leading-snug">{msg}</span>
+                            {isActive && <Check className="w-3.5 h-3.5 shrink-0 mt-0.5 text-primary" />}
+                          </div>
+                        </button>
+                        <button
+                          onClick={() => handleDeleteSavedMessage(i)}
+                          className="shrink-0 mt-2 text-muted-foreground hover:text-destructive transition-colors"
+                          title="Delete this message"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            {/* Edit area */}
+            <div className="space-y-1.5 pt-1">
+              <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                <Pencil className="w-3 h-3" /> Edit &amp; Compose
+              </p>
+              <textarea
+                className="w-full text-sm rounded-lg border border-input bg-background px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-ring min-h-[90px]"
+                value={editText}
+                onChange={(e) => { setEditText(e.target.value); setSelectedMsgKey(null); }}
+                placeholder="Type your message… use {name}, {amount}, {fy}"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={handleSaveNewMessage}
+              disabled={savingTpl || !editText.trim()}
+              className="w-full sm:w-auto"
+            >
+              Save as New Message
+            </Button>
+            <Button
+              onClick={handleSetActiveTemplate}
+              disabled={savingTpl || !editText.trim()}
+              className="w-full sm:w-auto"
+            >
+              {savingTpl ? 'Saving…' : 'Use This Template'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Manage Tags Dialog ── */}
       <Dialog open={showManageTags} onOpenChange={(o) => { setShowManageTags(o); if (!o) setNewTagName(''); }}>
         <DialogContent className="sm:max-w-sm">
@@ -363,6 +546,9 @@ export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setShowManageTags(true)} data-testid="menu-manage-tags">
             <Tags className="w-4 h-4 mr-2 shrink-0" />Manage Tags
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={openWAMessages} data-testid="menu-wa-messages">
+            <MessageSquare className="w-4 h-4 mr-2 shrink-0" />WhatsApp Messages
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => navigate('/analytics')} data-testid="menu-analytics">

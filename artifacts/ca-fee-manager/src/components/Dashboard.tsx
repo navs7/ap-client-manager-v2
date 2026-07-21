@@ -42,7 +42,7 @@ export function Dashboard() {
   const { years, loading: yearsLoading } = useFinancialYears(user?.uid);
   const [selectedYearId, setSelectedYearId] = useState<string | null>(null);
   const { clients, loading: clientsLoading } = useClients(user?.uid, selectedYearId || undefined);
-  const { customTags } = useUserSettings(user?.uid);
+  const { customTags, waTemplate, waMessages } = useUserSettings(user?.uid);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [tagFilters, setTagFilters] = useState<string[]>([]);
@@ -387,15 +387,15 @@ export function Dashboard() {
                     title={activeFilter === 'itr_filed' ? 'ITR Filed' : 'ITR Not Filed'}
                     clients={filteredClients} uid={user?.uid || ''} fyId={selectedYearId}
                     fyName={years.find((y) => y.id === selectedYearId)?.name ?? ''}
-                    type="mixed" allTags={allTags}
+                    type="mixed" allTags={allTags} waTemplate={waTemplate ?? ''}
                   />
                 ) : (
                   <>
-                    {(() => { const fyName = years.find((y) => y.id === selectedYearId)?.name ?? ''; return (<>
-                    <ClientSection title="Pending / Active Clients" clients={pendingClients} uid={user?.uid || ''} fyId={selectedYearId} fyName={fyName} type="pending" allTags={allTags} />
-                    <ClientSection title="Partial Payments"         clients={partialClients}   uid={user?.uid || ''} fyId={selectedYearId} fyName={fyName} type="partial"    allTags={allTags} />
-                    <ClientSection title="Fees Paid"                clients={paidClients}      uid={user?.uid || ''} fyId={selectedYearId} fyName={fyName} type="paid"       allTags={allTags} />
-                    <ClientSection title="No Service This Year"     clients={noServiceClients} uid={user?.uid || ''} fyId={selectedYearId} fyName={fyName} type="no_service" allTags={allTags} />
+                    {(() => { const fyName = years.find((y) => y.id === selectedYearId)?.name ?? ''; const waTpl = waTemplate ?? ''; return (<>
+                    <ClientSection title="Pending / Active Clients" clients={pendingClients} uid={user?.uid || ''} fyId={selectedYearId} fyName={fyName} type="pending" allTags={allTags} waTemplate={waTpl} />
+                    <ClientSection title="Partial Payments"         clients={partialClients}   uid={user?.uid || ''} fyId={selectedYearId} fyName={fyName} type="partial"    allTags={allTags} waTemplate={waTpl} />
+                    <ClientSection title="Fees Paid"                clients={paidClients}      uid={user?.uid || ''} fyId={selectedYearId} fyName={fyName} type="paid"       allTags={allTags} waTemplate={waTpl} />
+                    <ClientSection title="No Service This Year"     clients={noServiceClients} uid={user?.uid || ''} fyId={selectedYearId} fyName={fyName} type="no_service" allTags={allTags} waTemplate={waTpl} />
                     </>); })()}
                   </>
                 )}

@@ -29,6 +29,7 @@ interface ClientRowProps {
   fyId: string;
   fyName: string;
   allTags: string[];
+  waTemplate: string; // active WA message template (empty = use built-in default)
 }
 
 const FIXED_FEE_PILLS = [1000, 1500, 2000, 2500, 3000, 4000];
@@ -47,7 +48,7 @@ function cleanMobile(raw: string): string {
   return digits;
 }
 
-export function ClientRow({ client, uid, fyId, fyName, allTags }: ClientRowProps) {
+export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate }: ClientRowProps) {
   const [open, setOpen] = useState(false);
   const [quotedFees, setQuotedFees] = useState(client.quotedFees?.toString() || '');
   const [otherDues, setOtherDues] = useState(client.otherDues?.toString() || '');
@@ -193,12 +194,16 @@ export function ClientRow({ client, uid, fyId, fyName, allTags }: ClientRowProps
     const totalFees = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
     const received = client.feesReceived ?? 0;
     const pending = totalFees > 0 ? totalFees - received : null;
-    const feePart = pending !== null && pending > 0
-      ? `your pending CA fees of ${formatINR(pending)}`
-      : 'your pending CA fees';
-    const fyPart = fyName ? ` for FY ${fyName}` : '';
-    const message =
-      `Dear ${client.name}, this is a gentle reminder regarding ${feePart}${fyPart}. Kindly arrange payment at your earliest convenience. Thank you.`;
+    const amountStr = pending !== null && pending > 0 ? (formatINR(pending) ?? 'pending amount') : 'pending amount';
+
+    // Use active template, falling back to built-in default
+    const DEFAULT_TEMPLATE = `Dear {name}, this is a gentle reminder regarding your pending CA fees of {amount} for FY {fy}. Kindly arrange payment at your earliest convenience. Thank you.`;
+    const template = waTemplate || DEFAULT_TEMPLATE;
+    const message = template
+      .replace(/\{name\}/g, client.name)
+      .replace(/\{amount\}/g, amountStr)
+      .replace(/\{fy\}/g, fyName || 'current year');
+
     const number = cleanMobile(client.mobile);
     window.open(`https://wa.me/${number}?text=${encodeURIComponent(message)}`, '_blank');
   }
