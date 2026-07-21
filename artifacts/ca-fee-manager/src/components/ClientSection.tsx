@@ -9,19 +9,20 @@ interface ClientSectionProps {
   clients: Client[];
   uid: string;
   fyId: string;
+  fyName: string;
   type: 'pending' | 'partial' | 'paid' | 'no_service' | 'mixed';
   allTags: string[];
 }
 
-function renderRow(client: Client, uid: string, fyId: string, type: ClientSectionProps['type'], allTags: string[]) {
+function renderRow(client: Client, uid: string, fyId: string, fyName: string, type: ClientSectionProps['type'], allTags: string[]) {
   const t = type === 'mixed' ? client.status : type;
-  if (t === 'pending')    return <ClientRow key={client.id} client={client} uid={uid} fyId={fyId} allTags={allTags} />;
+  if (t === 'pending')    return <ClientRow key={client.id} client={client} uid={uid} fyId={fyId} fyName={fyName} allTags={allTags} />;
   if (t === 'partial')    return <PartialClientRow key={client.id} client={client} uid={uid} fyId={fyId} allTags={allTags} />;
   if (t === 'paid')       return <PaidClientRow key={client.id} client={client} uid={uid} fyId={fyId} allTags={allTags} />;
   return <NoServiceRow key={client.id} client={client} uid={uid} fyId={fyId} allTags={allTags} />;
 }
 
-export function ClientSection({ title, clients, uid, fyId, type, allTags }: ClientSectionProps) {
+export function ClientSection({ title, clients, uid, fyId, fyName, type, allTags }: ClientSectionProps) {
   if (clients.length === 0) return null;
   return (
     <div className="space-y-3">
@@ -32,7 +33,7 @@ export function ClientSection({ title, clients, uid, fyId, type, allTags }: Clie
         </span>
       </div>
       <div className="space-y-2">
-        {clients.map((client) => renderRow(client, uid, fyId, type, allTags))}
+        {clients.map((client) => renderRow(client, uid, fyId, fyName, type, allTags))}
       </div>
     </div>
   );

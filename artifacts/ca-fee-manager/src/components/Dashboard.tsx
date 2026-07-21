@@ -386,14 +386,17 @@ export function Dashboard() {
                   <ClientSection
                     title={activeFilter === 'itr_filed' ? 'ITR Filed' : 'ITR Not Filed'}
                     clients={filteredClients} uid={user?.uid || ''} fyId={selectedYearId}
+                    fyName={years.find((y) => y.id === selectedYearId)?.name ?? ''}
                     type="mixed" allTags={allTags}
                   />
                 ) : (
                   <>
-                    <ClientSection title="Pending / Active Clients" clients={pendingClients} uid={user?.uid || ''} fyId={selectedYearId} type="pending" allTags={allTags} />
-                    <ClientSection title="Partial Payments"         clients={partialClients}   uid={user?.uid || ''} fyId={selectedYearId} type="partial"    allTags={allTags} />
-                    <ClientSection title="Fees Paid"                clients={paidClients}      uid={user?.uid || ''} fyId={selectedYearId} type="paid"       allTags={allTags} />
-                    <ClientSection title="No Service This Year"     clients={noServiceClients} uid={user?.uid || ''} fyId={selectedYearId} type="no_service" allTags={allTags} />
+                    {(() => { const fyName = years.find((y) => y.id === selectedYearId)?.name ?? ''; return (<>
+                    <ClientSection title="Pending / Active Clients" clients={pendingClients} uid={user?.uid || ''} fyId={selectedYearId} fyName={fyName} type="pending" allTags={allTags} />
+                    <ClientSection title="Partial Payments"         clients={partialClients}   uid={user?.uid || ''} fyId={selectedYearId} fyName={fyName} type="partial"    allTags={allTags} />
+                    <ClientSection title="Fees Paid"                clients={paidClients}      uid={user?.uid || ''} fyId={selectedYearId} fyName={fyName} type="paid"       allTags={allTags} />
+                    <ClientSection title="No Service This Year"     clients={noServiceClients} uid={user?.uid || ''} fyId={selectedYearId} fyName={fyName} type="no_service" allTags={allTags} />
+                    </>); })()}
                   </>
                 )}
               </div>

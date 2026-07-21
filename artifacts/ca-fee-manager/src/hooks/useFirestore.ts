@@ -35,6 +35,7 @@ export interface UserSettings {
 export interface Client {
   id: string;
   name: string;
+  mobile: string | null;
   status: 'pending' | 'partial' | 'paid' | 'no_service';
   paymentType: 'partial' | 'discount' | null;
   quotedFees: number | null;
@@ -113,11 +114,12 @@ export async function createFinancialYear(uid: string, name: string) {
   return docRef.id;
 }
 
-export async function createClient(uid: string, fyId: string, name: string) {
+export async function createClient(uid: string, fyId: string, name: string, mobile: string | null = null) {
   const docRef = await addDoc(
     collection(db, `users/${uid}/financial_years/${fyId}/clients`),
     {
       name,
+      mobile,
       status: 'pending',
       paymentType: null,
       quotedFees: null,

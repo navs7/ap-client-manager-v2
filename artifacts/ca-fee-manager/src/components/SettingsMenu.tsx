@@ -63,17 +63,16 @@ export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
   function downloadSampleExcel() {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet([
-      ['Client Name'],
-      ['Rahul Sharma'],
-      ['Priya Patel'],
-      ['Amit Gupta'],
-      ['Sunita Joshi'],
-      ['Vikram Singh'],
-      ['Deepa Mehta'],
-      ['Arun Kumar'],
+      ['Client Name', 'Mobile Number'],
+      ['Rahul Sharma',  '9876543210'],
+      ['Priya Patel',   '9123456780'],
+      ['Amit Gupta',    '9988776655'],
+      ['Sunita Joshi',  '9871234560'],
+      ['Vikram Singh',  '9000011112'],
+      ['Deepa Mehta',   '9111222333'],
+      ['Arun Kumar',    '9444555666'],
     ]);
-    // Column width
-    ws['!cols'] = [{ wch: 30 }];
+    ws['!cols'] = [{ wch: 30 }, { wch: 18 }];
     XLSX.utils.book_append_sheet(wb, ws, 'Clients');
     XLSX.writeFile(wb, 'client-import-sample.xlsx');
   }
@@ -95,13 +94,20 @@ export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
         const firstCell = String((jsonData[0] as any[])[0] || '').toLowerCase();
         if (firstCell.includes('name') || firstCell.includes('client')) skipFirst = true;
       }
+      const rows: { name: string; mobile: string | null }[] = [];
       for (let i = skipFirst ? 1 : 0; i < jsonData.length; i++) {
         const row = jsonData[i] as any[];
-        if (row?.[0]) { const name = String(row[0]).trim(); if (name) names.push(name); }
+        if (row?.[0]) {
+          const name = String(row[0]).trim();
+          if (!name) continue;
+          const rawMobile = row[1] != null ? String(row[1]).trim() : null;
+          const mobile = rawMobile || null;
+          rows.push({ name, mobile });
+        }
       }
-      if (names.length === 0) { toast.error('No client names found in the file'); return; }
+      if (rows.length === 0) { toast.error('No client names found in the file'); return; }
       let ok = 0;
-      for (const name of names) { try { await createClient(uid, fyId, name); ok++; } catch { /* skip */ } }
+      for (const { name, mobile } of rows) { try { await createClient(uid, fyId, name, mobile); ok++; } catch { /* skip */ } }
       toast.success(`Imported ${ok} client${ok !== 1 ? 's' : ''}`);
     } catch { toast.error('Failed to import file'); }
     finally { setImporting(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
