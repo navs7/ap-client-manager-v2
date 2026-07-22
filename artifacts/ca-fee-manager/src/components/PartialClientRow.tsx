@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Client, updateClient } from '@/hooks/useFirestore';
+import { downloadUpiQr } from '@/lib/upiQr';
 import { Button } from '@/components/ui/button';
 import { Undo2, ChevronDown, ChevronRight, CheckCircle2, FileCheck2 } from 'lucide-react';
 
@@ -37,6 +38,7 @@ interface PartialClientRowProps {
   fyName: string;
   allTags: string[];
   waTemplate: string;
+  upiId: string;
 }
 
 function formatINR(amount: number | null | undefined) {
@@ -44,12 +46,12 @@ function formatINR(amount: number | null | undefined) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
 }
 
-export function PartialClientRow({ client, uid, fyId, fyName, allTags, waTemplate }: PartialClientRowProps) {
+export function PartialClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiId }: PartialClientRowProps) {
   const [open, setOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [showPaidDialog, setShowPaidDialog] = useState(false);
 
-  function handleWhatsApp() {
+  async function handleWhatsApp() {
     if (!client.mobile) {
       toast.error('No mobile number saved for this client');
       return;
@@ -58,6 +60,16 @@ export function PartialClientRow({ client, uid, fyId, fyName, allTags, waTemplat
     const received = client.feesReceived ?? 0;
     const pendingAmt = totalFees > 0 ? totalFees - received : null;
     const amountStr = pendingAmt !== null && pendingAmt > 0 ? formatINRStr(pendingAmt) : 'pending amount';
+
+    if (upiId) {
+      try {
+        await downloadUpiQr(upiId, pendingAmt, client.name);
+        toast.success('QR code downloaded — attach it in WhatsApp');
+      } catch {
+        toast.error('Failed to generate QR code');
+      }
+    }
+
     const DEFAULT_TEMPLATE = `Dear {name}, this is a gentle reminder regarding your pending ITR filing fees of {amount} for FY {fy}. Kindly arrange payment at your earliest convenience. Thank you.`;
     const template = waTemplate || DEFAULT_TEMPLATE;
     const message = template

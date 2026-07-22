@@ -13,17 +13,18 @@ interface ClientSectionProps {
   type: 'pending' | 'partial' | 'paid' | 'no_service' | 'mixed';
   allTags: string[];
   waTemplate: string;
+  upiId: string;
 }
 
-function renderRow(client: Client, uid: string, fyId: string, fyName: string, type: ClientSectionProps['type'], allTags: string[], waTemplate: string) {
+function renderRow(client: Client, uid: string, fyId: string, fyName: string, type: ClientSectionProps['type'], allTags: string[], waTemplate: string, upiId: string) {
   const t = type === 'mixed' ? client.status : type;
-  if (t === 'pending')    return <ClientRow key={client.id} client={client} uid={uid} fyId={fyId} fyName={fyName} allTags={allTags} waTemplate={waTemplate} />;
-  if (t === 'partial')    return <PartialClientRow key={client.id} client={client} uid={uid} fyId={fyId} fyName={fyName} allTags={allTags} waTemplate={waTemplate} />;
+  if (t === 'pending')    return <ClientRow key={client.id} client={client} uid={uid} fyId={fyId} fyName={fyName} allTags={allTags} waTemplate={waTemplate} upiId={upiId} />;
+  if (t === 'partial')    return <PartialClientRow key={client.id} client={client} uid={uid} fyId={fyId} fyName={fyName} allTags={allTags} waTemplate={waTemplate} upiId={upiId} />;
   if (t === 'paid')       return <PaidClientRow key={client.id} client={client} uid={uid} fyId={fyId} allTags={allTags} />;
   return <NoServiceRow key={client.id} client={client} uid={uid} fyId={fyId} allTags={allTags} />;
 }
 
-export function ClientSection({ title, clients, uid, fyId, fyName, type, allTags, waTemplate }: ClientSectionProps) {
+export function ClientSection({ title, clients, uid, fyId, fyName, type, allTags, waTemplate, upiId }: ClientSectionProps) {
   if (clients.length === 0) return null;
   return (
     <div className="space-y-3">
@@ -34,7 +35,7 @@ export function ClientSection({ title, clients, uid, fyId, fyName, type, allTags
         </span>
       </div>
       <div className="space-y-2">
-        {clients.map((client) => renderRow(client, uid, fyId, fyName, type, allTags, waTemplate))}
+        {clients.map((client) => renderRow(client, uid, fyId, fyName, type, allTags, waTemplate, upiId))}
       </div>
     </div>
   );

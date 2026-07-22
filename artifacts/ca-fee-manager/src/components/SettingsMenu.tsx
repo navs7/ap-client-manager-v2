@@ -1,7 +1,7 @@
 import { useRef, useState, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import * as XLSX from 'xlsx';
-import { Settings, Upload, UserPlus, Tags, Plus, Trash2, Search, X, FileDown, BarChart2, MessageSquare, Check, Pencil } from 'lucide-react';
+import { Settings, Upload, UserPlus, Tags, Plus, Trash2, Search, X, FileDown, BarChart2, MessageSquare, Check, Pencil, QrCode } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -45,7 +45,12 @@ export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
   // Manage tags
   const [showManageTags, setShowManageTags] = useState(false);
   const [newTagName, setNewTagName] = useState('');
-  const { customTags, waMessages, waTemplate } = useUserSettings(uid || undefined);
+  const { customTags, waMessages, waTemplate, upiId } = useUserSettings(uid || undefined);
+
+  // UPI payment QR
+  const [showUpiDialog, setShowUpiDialog] = useState(false);
+  const [upiDraft, setUpiDraft] = useState('');
+  const [savingUpi, setSavingUpi] = useState(false);
 
   // WhatsApp message templates
   const [showWAMessages, setShowWAMessages] = useState(false);
@@ -169,6 +174,23 @@ export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
   }
 
   // ── WhatsApp message templates ──────────────────────────────────────────────
+  async function handleSaveUpiId() {
+    const val = upiDraft.trim();
+    if (!uid) return;
+    setSavingUpi(true);
+    try {
+      await updateUserSettings(uid, { upiId: val });
+      toast.success(val ? 'UPI ID saved' : 'UPI ID cleared');
+      setShowUpiDialog(false);
+    } catch { toast.error('Failed to save UPI ID'); }
+    finally { setSavingUpi(false); }
+  }
+
+  function openUpiDialog() {
+    setUpiDraft(upiId ?? '');
+    setShowUpiDialog(true);
+  }
+
   function openWAMessages() {
     // Pre-select whatever is currently active
     if (waTemplate) {
@@ -515,6 +537,44 @@ export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
         </DialogContent>
       </Dialog>
 
+      {/* UPI Payment QR Dialog */}
+      <Dialog open={showUpiDialog} onOpenChange={setShowUpiDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>UPI Payment QR</DialogTitle>
+            <DialogDescription>
+              Enter your UPI ID (e.g. <span className="font-mono">yourname@upi</span>). When you send a WhatsApp reminder, a QR code with the client's pending amount will be auto-downloaded so you can attach it in the chat.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2 space-y-2">
+            <Input
+              autoFocus
+              placeholder="e.g. yourname@oksbi"
+              value={upiDraft}
+              onChange={(e) => setUpiDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSaveUpiId(); }}
+            />
+            {upiId && (
+              <p className="text-xs text-muted-foreground">
+                Current: <span className="font-mono text-foreground">{upiId}</span>
+              </p>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            {upiId && (
+              <Button variant="outline" className="text-destructive hover:bg-destructive/10"
+                onClick={() => { setUpiDraft(''); handleSaveUpiId(); }} disabled={savingUpi}>
+                Clear
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => setShowUpiDialog(false)}>Cancel</Button>
+            <Button onClick={handleSaveUpiId} disabled={savingUpi || upiDraft.trim() === upiId}>
+              {savingUpi ? 'Saving…' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="icon" title="Settings" data-testid="button-settings">
@@ -549,6 +609,11 @@ export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
           </DropdownMenuItem>
           <DropdownMenuItem onClick={openWAMessages} data-testid="menu-wa-messages">
             <MessageSquare className="w-4 h-4 mr-2 shrink-0" />WhatsApp Messages
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={openUpiDialog} data-testid="menu-upi-qr">
+            <QrCode className="w-4 h-4 mr-2 shrink-0" />
+            UPI Payment QR
+            {upiId && <span className="ml-auto text-xs text-muted-foreground font-mono truncate max-w-[80px]">{upiId}</span>}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => navigate('/analytics')} data-testid="menu-analytics">

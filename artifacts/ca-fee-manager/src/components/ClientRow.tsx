@@ -10,6 +10,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
 import { Check, UserX, Pencil, CheckCheck, ChevronDown, ChevronRight, CreditCard, Tag, FileCheck2 } from 'lucide-react';
+import { downloadUpiQr } from '@/lib/upiQr';
 
 function WhatsAppIcon({ className }: { className?: string }) {
   return (
@@ -30,6 +31,7 @@ interface ClientRowProps {
   fyName: string;
   allTags: string[];
   waTemplate: string; // active WA message template (empty = use built-in default)
+  upiId: string;      // payee UPI VPA; empty = no QR
 }
 
 const FIXED_FEE_PILLS = [1000, 1500, 2000, 2500, 3000, 4000];
@@ -186,7 +188,7 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate }: Cl
     }, 320);
   }
 
-  function handleWhatsApp() {
+  async function handleWhatsApp() {
     if (!client.mobile) {
       toast.error('No mobile number saved for this client');
       return;
@@ -195,6 +197,16 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate }: Cl
     const received = client.feesReceived ?? 0;
     const pending = totalFees > 0 ? totalFees - received : null;
     const amountStr = pending !== null && pending > 0 ? (formatINR(pending) ?? 'pending amount') : 'pending amount';
+
+    // Download UPI QR first (if UPI ID is configured)
+    if (upiId) {
+      try {
+        await downloadUpiQr(upiId, pending, client.name);
+        toast.success('QR code downloaded — attach it in WhatsApp');
+      } catch {
+        toast.error('Failed to generate QR code');
+      }
+    }
 
     // Use active template, falling back to built-in default
     const DEFAULT_TEMPLATE = `Dear {name}, this is a gentle reminder regarding your pending ITR filing fees of {amount} for FY {fy}. Kindly arrange payment at your earliest convenience. Thank you.`;

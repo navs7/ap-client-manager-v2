@@ -40,6 +40,7 @@ export interface UserSettings {
   customTags: string[];
   waMessages: string[];   // user-saved custom WA message templates
   waTemplate: string | null; // currently active template (null = first built-in)
+  upiId: string;          // payee UPI VPA for QR generation e.g. "name@upi"
 }
 
 export interface Client {
@@ -97,7 +98,7 @@ export function useClients(uid: string | undefined, fyId: string | undefined) {
 }
 
 export function useUserSettings(uid: string | undefined) {
-  const [settings, setSettings] = useState<UserSettings>({ customTags: [], waMessages: [], waTemplate: null });
+  const [settings, setSettings] = useState<UserSettings>({ customTags: [], waMessages: [], waTemplate: null, upiId: '' });
 
   useEffect(() => {
     if (!uid) return;
@@ -109,8 +110,9 @@ export function useUserSettings(uid: string | undefined) {
           customTags: data.customTags ?? [],
           waMessages: data.waMessages ?? [],
           waTemplate: data.waTemplate ?? null,
+          upiId: data.upiId ?? '',
         });
-      } else setSettings({ customTags: [], waMessages: [], waTemplate: null });
+      } else setSettings({ customTags: [], waMessages: [], waTemplate: null, upiId: '' });
     });
   }, [uid]);
 
