@@ -97,7 +97,7 @@ export function useClients(uid: string | undefined, fyId: string | undefined) {
 }
 
 export function useUserSettings(uid: string | undefined) {
-  const [settings, setSettings] = useState<UserSettings>({ customTags: [] });
+  const [settings, setSettings] = useState<UserSettings>({ customTags: [], waMessages: [], waTemplate: null });
 
   useEffect(() => {
     if (!uid) return;
