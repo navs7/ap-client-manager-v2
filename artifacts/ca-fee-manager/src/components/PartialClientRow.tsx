@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Client, updateClient } from '@/hooks/useFirestore';
+import { Client, HistoryEntry, updateClient } from '@/hooks/useFirestore';
 import { downloadUpiQr } from '@/lib/upiQr';
 import { Button } from '@/components/ui/button';
 import { Undo2, ChevronDown, ChevronRight, CheckCircle2, FileCheck2 } from 'lucide-react';
@@ -19,6 +19,10 @@ import { toast } from 'sonner';
 import { HistoryLog } from './HistoryLog';
 import { CommentInput } from './CommentInput';
 import { TagSelector, TagChip } from './TagSelector';
+
+function makeEntry(action: string): HistoryEntry {
+  return { id: crypto.randomUUID(), at: new Date().toISOString(), action };
+}
 
 function cleanMobile(raw: string): string {
   const digits = raw.replace(/\D/g, '');
@@ -77,6 +81,10 @@ export function PartialClientRow({ client, uid, fyId, fyName, allTags, waTemplat
       .replace(/\{amount\}/g, amountStr)
       .replace(/\{fy\}/g, fyName || 'current year');
     window.open(`https://wa.me/${cleanMobile(client.mobile)}?text=${encodeURIComponent(message)}`, '_blank');
+
+    // Log to history
+    const entry = makeEntry(`WhatsApp reminder sent — ${amountStr} pending`);
+    await updateClient(uid, fyId, client.id, { history: [...(client.history || []), entry] });
   }
 
   async function handleItrFiled() {

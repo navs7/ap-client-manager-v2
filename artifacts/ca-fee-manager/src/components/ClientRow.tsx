@@ -218,6 +218,10 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
 
     const number = cleanMobile(client.mobile);
     window.open(`https://wa.me/${number}?text=${encodeURIComponent(message)}`, '_blank');
+
+    // Log to history
+    const entry = makeEntry(`WhatsApp reminder sent — ${amountStr} pending`);
+    await updateClient(uid, fyId, client.id, { history: [...(client.history || []), entry] });
   }
 
   async function handleNoServiceConfirm() {
