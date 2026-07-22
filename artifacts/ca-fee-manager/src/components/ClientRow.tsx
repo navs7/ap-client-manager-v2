@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { HistoryLog } from './HistoryLog';
 import { CommentInput } from './CommentInput';
 import { TagSelector, TagChip } from './TagSelector';
+import { AddMobileDialog } from './AddMobileDialog';
 
 interface ClientRowProps {
   client: Client;
@@ -60,6 +61,7 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
   const [exiting, setExiting] = useState(false);
   const [showDoneDialog, setShowDoneDialog] = useState(false);
   const [showNoServiceDialog, setShowNoServiceDialog] = useState(false);
+  const [showAddMobile, setShowAddMobile] = useState(false);
 
   interface PartialDialogData { received: number; quoted: number; diff: number; afterDone: boolean; }
   const [partialData, setPartialData] = useState<PartialDialogData | null>(null);
@@ -188,17 +190,12 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
     }, 320);
   }
 
-  async function handleWhatsApp() {
-    if (!client.mobile) {
-      toast.error('No mobile number saved for this client');
-      return;
-    }
+  async function sendWhatsApp(mobile: string) {
     const totalFees = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
     const received = client.feesReceived ?? 0;
     const pending = totalFees > 0 ? totalFees - received : null;
     const amountStr = pending !== null && pending > 0 ? (formatINR(pending) ?? 'pending amount') : 'pending amount';
 
-    // Download UPI QR first (if UPI ID is configured)
     if (upiId) {
       try {
         await downloadUpiQr(upiId, pending, client.name);
@@ -208,7 +205,6 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
       }
     }
 
-    // Use active template, falling back to built-in default
     const DEFAULT_TEMPLATE = `Dear {name}, this is a gentle reminder regarding your pending ITR filing fees of {amount} for FY {fy}. Kindly arrange payment at your earliest convenience. Thank you.`;
     const template = waTemplate || DEFAULT_TEMPLATE;
     const message = template
@@ -216,12 +212,20 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
       .replace(/\{amount\}/g, amountStr)
       .replace(/\{fy\}/g, fyName || 'current year');
 
-    const number = cleanMobile(client.mobile);
-    window.open(`https://wa.me/${number}?text=${encodeURIComponent(message)}`, '_blank');
-
-    // Log to history
+    window.open(`https://wa.me/${cleanMobile(mobile)}?text=${encodeURIComponent(message)}`, '_blank');
     const entry = makeEntry(`WhatsApp reminder sent — ${amountStr} pending`);
     await updateClient(uid, fyId, client.id, { history: [...(client.history || []), entry] });
+  }
+
+  async function handleWhatsApp() {
+    if (!client.mobile) { setShowAddMobile(true); return; }
+    await sendWhatsApp(client.mobile);
+  }
+
+  async function handleSaveMobileAndSend(mobile: string) {
+    await updateClient(uid, fyId, client.id, { mobile });
+    setShowAddMobile(false);
+    await sendWhatsApp(mobile);
   }
 
   async function handleNoServiceConfirm() {
@@ -276,6 +280,13 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
 
   return (
     <>
+      <AddMobileDialog
+        open={showAddMobile}
+        onOpenChange={setShowAddMobile}
+        clientName={client.name}
+        onConfirm={handleSaveMobileAndSend}
+      />
+
       <AlertDialog open={showDoneDialog} onOpenChange={setShowDoneDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>

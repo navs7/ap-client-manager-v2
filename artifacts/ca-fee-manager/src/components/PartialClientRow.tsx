@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { HistoryLog } from './HistoryLog';
 import { CommentInput } from './CommentInput';
 import { TagSelector, TagChip } from './TagSelector';
+import { AddMobileDialog } from './AddMobileDialog';
 
 function makeEntry(action: string): HistoryEntry {
   return { id: crypto.randomUUID(), at: new Date().toISOString(), action };
@@ -54,12 +55,9 @@ export function PartialClientRow({ client, uid, fyId, fyName, allTags, waTemplat
   const [open, setOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [showPaidDialog, setShowPaidDialog] = useState(false);
+  const [showAddMobile, setShowAddMobile] = useState(false);
 
-  async function handleWhatsApp() {
-    if (!client.mobile) {
-      toast.error('No mobile number saved for this client');
-      return;
-    }
+  async function sendWhatsApp(mobile: string) {
     const totalFees = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
     const received = client.feesReceived ?? 0;
     const pendingAmt = totalFees > 0 ? totalFees - received : null;
@@ -80,11 +78,20 @@ export function PartialClientRow({ client, uid, fyId, fyName, allTags, waTemplat
       .replace(/\{name\}/g, client.name)
       .replace(/\{amount\}/g, amountStr)
       .replace(/\{fy\}/g, fyName || 'current year');
-    window.open(`https://wa.me/${cleanMobile(client.mobile)}?text=${encodeURIComponent(message)}`, '_blank');
-
-    // Log to history
+    window.open(`https://wa.me/${cleanMobile(mobile)}?text=${encodeURIComponent(message)}`, '_blank');
     const entry = makeEntry(`WhatsApp reminder sent — ${amountStr} pending`);
     await updateClient(uid, fyId, client.id, { history: [...(client.history || []), entry] });
+  }
+
+  async function handleWhatsApp() {
+    if (!client.mobile) { setShowAddMobile(true); return; }
+    await sendWhatsApp(client.mobile);
+  }
+
+  async function handleSaveMobileAndSend(mobile: string) {
+    await updateClient(uid, fyId, client.id, { mobile });
+    setShowAddMobile(false);
+    await sendWhatsApp(mobile);
   }
 
   async function handleItrFiled() {
@@ -131,6 +138,13 @@ export function PartialClientRow({ client, uid, fyId, fyName, allTags, waTemplat
 
   return (
     <>
+      <AddMobileDialog
+        open={showAddMobile}
+        onOpenChange={setShowAddMobile}
+        clientName={client.name}
+        onConfirm={handleSaveMobileAndSend}
+      />
+
       <AlertDialog open={showPaidDialog} onOpenChange={setShowPaidDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
