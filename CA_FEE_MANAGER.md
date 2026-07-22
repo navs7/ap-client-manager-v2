@@ -21,6 +21,8 @@
    - [Fee Management](#fee-management)
    - [ITR Filing](#itr-filing)
    - [History & Comments](#history--comments)
+   - [WhatsApp Reminders](#whatsapp-reminders)
+   - [UPI Payment QR](#upi-payment-qr)
    - [Settings Menu](#settings-menu)
 10. [Component Reference](#component-reference)
 11. [Hooks & Data Layer](#hooks--data-layer)
@@ -39,7 +41,8 @@ CA Fee Manager is a single-page React application backed by Firebase (Authentica
 - Mark ITR filing completion per client
 - Attach tags (Salaried, Capital Gain, etc.) for categorisation and filtering
 - Maintain a full audit history and freeform notes on every client
-- Import a client list from Excel and export a sample template
+- Send pre-drafted WhatsApp reminders with auto-downloaded UPI QR codes
+- Import a client list from Excel (auto-deduplicates by mobile number) and export a sample template
 
 All data is stored per-user in Firestore; no data is shared between accounts.
 
@@ -58,6 +61,7 @@ All data is stored per-user in Firestore; no data is shared between accounts.
 | Database | Firebase Firestore |
 | Authentication | Firebase Auth (email/password) |
 | Excel processing | SheetJS (`xlsx`) |
+| QR code generation | `qrcode` npm package |
 | State (server) | `@tanstack/react-query` (provider only; Firestore listeners used directly) |
 | Monorepo | pnpm workspaces |
 
@@ -79,10 +83,13 @@ workspace/
 │   │       │   └── useFirestore.ts
 │   │       ├── lib/
 │   │       │   ├── firebase.ts
+│   │       │   ├── upiQr.ts          # UPI QR code generation & download
 │   │       │   └── utils.ts
 │   │       ├── components/
 │   │       │   ├── Dashboard.tsx
+│   │       │   ├── AnalyticsDashboard.tsx
 │   │       │   ├── Login.tsx
+│   │       │   ├── ErrorBoundary.tsx
 │   │       │   ├── FYSelector.tsx
 │   │       │   ├── MetricsCard.tsx
 │   │       │   ├── ClientSection.tsx
@@ -90,6 +97,7 @@ workspace/
 │   │       │   ├── PaidClientRow.tsx
 │   │       │   ├── PartialClientRow.tsx
 │   │       │   ├── NoServiceRow.tsx
+│   │       │   ├── AddMobileDialog.tsx   # Shared dialog to add mobile on WA click
 │   │       │   ├── HistoryLog.tsx
 │   │       │   ├── CommentInput.tsx
 │   │       │   ├── TagSelector.tsx
@@ -125,26 +133,32 @@ App.tsx  ──► loading spinner
      │
      ├── user == null  ──► Login.tsx
      │
-     └── user != null  ──► Dashboard.tsx
-                                │
-                    ┌───────────┴────────────┐
-                    │                        │
-              FYSelector              SettingsMenu
-              (FY picker)        (add/delete/import/tags)
+     └── user != null  ──► Router (wouter, base = BASE_URL)
+                               │
+                    ┌──────────┴──────────┐
+                    │                     │
+             Dashboard.tsx      AnalyticsDashboard.tsx
                     │
-              useClients (Firestore listener)
-                    │
-              MetricsCard
-                    │
-              Filter bar (status + tags + search)
-                    │
-              ClientSection × 4
-          ┌─────────┼──────────┬────────────┐
-    ClientRow  PartialClientRow  PaidClientRow  NoServiceRow
-    (pending)   (partial)         (paid)        (no_service)
+        ┌───────────┴────────────┐
+        │                        │
+  FYSelector              SettingsMenu
+  (FY picker)        (add/delete/import/tags/WA/UPI)
+        │
+  useClients (Firestore listener)
+        │
+  MetricsCard
+        │
+  Filter bar (status + tags + search)
+        │
+  ClientSection × 4
+┌─────────┼──────────┬────────────┐
+ClientRow  PartialClientRow  PaidClientRow  NoServiceRow
+(pending)   (partial)         (paid)        (no_service)
 ```
 
 All Firestore reads use real-time `onSnapshot` listeners — the UI updates instantly when data changes in another tab or device.
+
+The selected financial year is persisted in `sessionStorage` under the key `ca_selected_fy` so it survives page refreshes and SPA navigation but clears when the tab is closed.
 
 ---
 
@@ -158,6 +172,9 @@ users/
     settings/
       app                          # UserSettings document
         customTags: string[]
+        waMessages: string[]       # User-saved custom WA templates
+        waTemplate: string | null  # Active template text (null = use built-in default)
+        upiId: string              # UPI VPA for QR code generation (e.g. name@upi)
 
     financial_years/
       {fyId}/
@@ -167,6 +184,7 @@ users/
         clients/
           {clientId}/
             name: string
+            mobile: string | null
             status: 'pending' | 'partial' | 'paid' | 'no_service'
             paymentType: 'partial' | 'discount' | null
             quotedFees: number | null
@@ -184,9 +202,10 @@ users/
 ### Key Design Decisions
 
 - **Per-user isolation** — all data lives under `users/{uid}/`. No cross-user data access.
-- **History as array** — the `history` field is a Firestore array of `HistoryEntry` objects. Every status change, fee update, and note appends to this array, creating a full audit trail.
+- **History as array** — the `history` field is a Firestore array of `HistoryEntry` objects. Every status change, fee update, note, and WhatsApp send appends to this array, creating a full audit trail.
 - **`updatedAt` always server-side** — `updateClient()` always merges `updatedAt: serverTimestamp()` to avoid clock skew.
 - **`paymentType` vs `status`** — `status` drives which card component renders; `paymentType` records the reason (`'partial'` = genuinely partial, `'discount'` = CA gave a price reduction).
+- **Mobile as unique identifier** — mobile numbers are normalised (10-digit after stripping country code) and used to deduplicate clients on Excel import. Adding a client with a duplicate mobile number via the in-app dialog is blocked with an inline error.
 
 ---
 
@@ -203,6 +222,8 @@ Account creation is done directly in the Firebase Console — the app does not e
 
 **Login page** (`Login.tsx`) presents email + password fields and calls `signInWithEmailAndPassword`. Errors are displayed inline.
 
+The entire app is wrapped in an `ErrorBoundary` (`ErrorBoundary.tsx`) that catches unexpected runtime errors and renders a friendly fallback instead of a blank screen.
+
 ---
 
 ## Financial Years
@@ -215,6 +236,8 @@ Indian financial years run **April to March**. The selector:
 - Generates options from 2000-2001 up to one year ahead of the current FY (to allow planning).
 - On first load, `Dashboard.tsx` auto-selects or creates the current FY.
 - Selecting an FY that has no Firestore document yet creates it on demand via `createFinancialYear()`.
+
+The selected FY ID is persisted in `sessionStorage` (`ca_selected_fy`) so refreshing the page or navigating to Analytics and back does not reset the selection.
 
 ---
 
@@ -377,12 +400,48 @@ Two filter options — **ITR Filed** and **ITR Not Filed** — show a flat mixed
 | ITR Filed | `"ITR Filed"` |
 | ITR Status Removed | `"ITR Status Removed"` |
 | Undo | `"Moved back to Pending"` etc. |
+| WhatsApp reminder sent | `"WhatsApp reminder sent — ₹X pending"` |
 
 **Comments** — freeform notes added manually. Stored as `"Note: <text>"` in history.
 
 **Bullet list shortcut** — type `- ` (hyphen + space) at the start of a line in the comment box to auto-convert to `• `. Pressing Enter on a bullet line auto-continues with `• ` on the next line.
 
 History is displayed newest-first, formatted in `en-IN` locale (`DD Mon YYYY, HH:MM AM/PM`).
+
+---
+
+### WhatsApp Reminders
+
+**Files:** `src/components/ClientRow.tsx`, `src/components/PartialClientRow.tsx`, `src/components/AddMobileDialog.tsx`
+
+Every pending and partial client card has a WhatsApp button. Tapping it:
+
+1. **If a UPI ID is configured** — generates a UPI QR PNG (`UPI_QR_<ClientName>.png`) pre-filled with the client's pending amount and auto-downloads it. A toast prompts the CA to attach it in the chat.
+2. Opens `wa.me/<mobile>?text=<message>` in a new tab with a pre-drafted reminder.
+3. Appends a history entry: `"WhatsApp reminder sent — ₹X pending"`.
+
+**Template system** — the message is built from the active WA template (Settings → WhatsApp Messages). Placeholders:
+- `{name}` — client name
+- `{amount}` — pending amount (formatted as ₹)
+- `{fy}` — financial year name
+
+Five built-in templates are provided (all referencing "ITR filing fees"). A CA can also save custom templates and select one as active.
+
+**Missing mobile number** — if a client has no mobile number (e.g. imported from Excel without a phone column), tapping the WhatsApp button opens the **Add Mobile Number** dialog (`AddMobileDialog.tsx`). Saving the number:
+- Permanently updates `client.mobile` in Firestore
+- Immediately proceeds to open WhatsApp — no second tap needed
+
+---
+
+### UPI Payment QR
+
+**Files:** `src/lib/upiQr.ts`, `src/components/SettingsMenu.tsx`
+
+**Setup (one time):** Settings → UPI Payment QR → enter your UPI VPA (e.g. `yourname@oksbi`) → Save.
+
+**On every WhatsApp send:**
+- `downloadUpiQr(upiId, pendingAmount, clientName)` builds a `upi://pay?pa=…&pn=…&am=…` URI, renders it as a 400 × 400 px PNG via the `qrcode` package, and triggers a browser download.
+- If no UPI ID is configured, this step is silently skipped.
 
 ---
 
@@ -394,21 +453,31 @@ Accessed via the ⚙ icon in the FY selector bar.
 
 | Menu Item | Action |
 |---|---|
-| **Add Client** | Dialog with name input; Enter to submit; creates a new pending client |
-| **Import from Excel** | File picker (`.xlsx` / `.xls`); reads first column as client names; skips header row if first cell contains "name" or "client"; bulk-creates clients |
-| **Download Sample** | Generates and downloads `client-import-sample.xlsx` with a `Client Name` header and 7 example rows |
-| **Delete Clients** | Scrollable list of all clients with status badges; hover to reveal trash icon; confirmation dialog before permanent deletion; includes search when >5 clients |
-| **Manage Tags** | Shows built-in tags (read-only) and custom tags (deletable); input to add new custom tags |
+| **Add Client** | Dialog with name + optional mobile number inputs. Blocks submission if the entered mobile already belongs to another client in the current FY (inline error shown). |
+| **Import from Excel** | File picker (`.xlsx` / `.xls`); reads column A as client name, column B as mobile number; skips header row if first cell contains "name" or "client"; **deduplicates by mobile** — rows whose normalised 10-digit number matches an existing client are skipped; reports imported count and skipped count in the success toast. |
+| **Download Sample** | Generates and downloads `client-import-sample.xlsx` with a `Client Name` / `Mobile Number` header and 7 example rows. |
+| **Delete Clients** | Scrollable list of all clients with status badges; hover to reveal trash icon; confirmation dialog before permanent deletion; includes search when >5 clients. |
+| **Manage Tags** | Shows built-in tags (read-only) and custom tags (deletable); input to add new custom tags. |
+| **WhatsApp Messages** | Manage WA reminder templates. View/edit the 5 built-in templates (read-only preview) and save custom ones. Select any template as the active default via the radio-style list. |
+| **UPI Payment QR** | Enter or update your UPI VPA. The current ID is shown as a small label next to the menu item. Clearing the field disables QR generation. |
+
+**Mobile deduplication logic** — numbers are normalised to 10 digits before comparison: `91XXXXXXXXXX` → strip `91`; `0XXXXXXXXXX` → strip leading `0`; already 10 digits → use as-is.
 
 ---
 
 ## Component Reference
 
 ### `App.tsx`
-Root component. Provides `QueryClientProvider`, `AuthProvider`, and the `Toaster`. Renders `<Login>` or `<Dashboard>` based on auth state.
+Root component. Provides `QueryClientProvider`, `AuthProvider`, and the `Toaster`. Wraps the app in `ErrorBoundary`. Renders `<Login>` or a `<Router>`-wrapped app based on auth state.
+
+### `ErrorBoundary.tsx`
+React class component wrapping the entire app. Catches unhandled render/lifecycle errors and displays a fallback UI instead of a blank screen.
 
 ### `Dashboard.tsx`
-Main application view. Owns all filter state (`activeFilter`, `tagFilters`, `searchQuery`). Fetches financial years, clients, and user settings. Auto-creates the current FY on first login. Renders `MetricsCard`, the sticky filter bar, and four `ClientSection` instances (or a flat mixed section for ITR filters).
+Main application view. Owns all filter state (`activeFilter`, `tagFilters`, `searchQuery`). Fetches financial years, clients, and user settings. Auto-creates the current FY on first login. Persists selected FY in `sessionStorage`. Renders `MetricsCard`, the sticky filter bar, and four `ClientSection` instances (or a flat mixed section for ITR filters). Passes `upiId` and `waTemplate` from user settings down to all client row components.
+
+### `AnalyticsDashboard.tsx`
+Analytics view. Uses the same `sessionStorage` FY key (`ca_selected_fy`) as `Dashboard.tsx` so the selected financial year is shared across navigation.
 
 ### `FYSelector.tsx`
 Dropdown to pick a financial year. Generates all options from 2000-2001 to `currentFY + 1`. Selecting an FY without a Firestore document creates it on demand.
@@ -417,27 +486,27 @@ Dropdown to pick a financial year. Generates all options from 2000-2001 to `curr
 Reads the `clients` array prop, computes 8 aggregated metrics, and renders them in a 4-column 2-row grid.
 
 ### `ClientSection.tsx`
-Thin wrapper that renders a titled group of clients. Accepts `type` prop (`'pending' | 'partial' | 'paid' | 'no_service' | 'mixed'`). In `'mixed'` mode, picks the correct row component per-client based on `client.status`.
+Thin wrapper that renders a titled group of clients. Accepts `type` prop (`'pending' | 'partial' | 'paid' | 'no_service' | 'mixed'`). In `'mixed'` mode, picks the correct row component per-client based on `client.status`. Threads `upiId` and `waTemplate` props to each row.
 
 ### `ClientRow.tsx` *(pending clients)*
-The most complex component. Manages local state for all fee inputs with 600ms debounced saves. Handles the Done / ITR / No Service actions, the Partial/Discount dialog, and the re-edit popup. Shows fixed fee pills (₹1k–₹4k). Expands to show Quoted Fees, Other Dues, Fees Received, TagSelector, CommentInput, and HistoryLog.
+The most complex component. Manages local state for all fee inputs with 600ms debounced saves. Handles the Done / ITR / No Service actions, the Partial/Discount dialog, and the re-edit popup. Shows fixed fee pills (₹1k–₹4k). WhatsApp button: if mobile is present, triggers `sendWhatsApp()` (QR download → `wa.me` open → history log); if mobile is absent, opens `AddMobileDialog`. Expands to show Quoted Fees, Other Dues, Fees Received, TagSelector, CommentInput, and HistoryLog.
 
 ### `PaidClientRow.tsx` *(paid clients)*
 Read-only fee display. ITR toggle + icon-only Undo button. Expands to show fee breakdown, TagSelector, CommentInput, and HistoryLog.
 
 ### `PartialClientRow.tsx` *(partial payment clients)*
-Shows paid amount + pending amount in the header. "Paid in Full" button with confirmation. ITR toggle + icon-only Undo. Expands to show full fee breakdown, TagSelector, CommentInput, and HistoryLog.
+Shows paid amount + pending amount in the header. "Paid in Full" button with confirmation (icon-only on mobile, icon+text on sm+). ITR toggle + icon-only Undo. WhatsApp button with same mobile-check flow as `ClientRow`. Expands to show full fee breakdown, TagSelector, CommentInput, and HistoryLog.
 
 ### `NoServiceRow.tsx` *(no service clients)*
 Minimal card with a `CalendarX` icon. ITR toggle + icon-only Undo. Expands to show TagSelector, CommentInput, and HistoryLog.
+
+### `AddMobileDialog.tsx`
+Shared dialog rendered by `ClientRow` and `PartialClientRow` when the WhatsApp button is tapped for a client with no mobile number. Accepts `clientName`, `open`, `onOpenChange`, and `onConfirm(mobile)` props. On confirm: the parent saves the mobile to Firestore via `updateClient`, then immediately calls `sendWhatsApp`.
 
 ### `TagSelector.tsx`
 Exports two components:
 - **`TagChip`** — a small colored badge for a single tag; optionally shows a remove ✕ button
 - **`TagSelector`** — shows selected tags as chips + a popover with all available tags as a checkable list; uses `getTagColor(tag)` for consistent hashing-based color assignment
-
-### `MetricsCard.tsx`
-See [Dashboard & Metrics](#dashboard--metrics).
 
 ### `HistoryLog.tsx`
 Receives `history: HistoryEntry[]`, sorts newest-first, renders each entry as a left-bordered row with timestamp + action text.
@@ -446,7 +515,7 @@ Receives `history: HistoryEntry[]`, sorts newest-first, renders each entry as a 
 Textarea with auto-bullet conversion (`- ` → `• `), Enter continuation for bullet lines, and Ctrl+Enter to submit.
 
 ### `SettingsMenu.tsx`
-See [Settings Menu](#settings-menu).
+See [Settings Menu](#settings-menu). Also manages state for the UPI dialog (`showUpiDialog`, `upiDraft`, `savingUpi`) and the WA messages panel. Mobile deduplication logic (`normMobile`) lives here and is used by both the Add Client dialog and Excel import.
 
 ### `ThemeToggle.tsx`
 Light/Dark mode toggle using `next-themes`.
@@ -479,11 +548,15 @@ interface HistoryEntry {
 
 interface UserSettings {
   customTags: string[];
+  waMessages: string[];       // user-saved custom WA templates
+  waTemplate: string | null;  // active template text; null = use built-in default
+  upiId: string;              // UPI VPA for QR generation
 }
 
 interface Client {
   id: string;
   name: string;
+  mobile: string | null;
   status: 'pending' | 'partial' | 'paid' | 'no_service';
   paymentType: 'partial' | 'discount' | null;
   quotedFees: number | null;
@@ -511,16 +584,33 @@ interface Client {
 | Function | Operation |
 |---|---|
 | `createFinancialYear(uid, name)` | Adds a new FY document |
-| `createClient(uid, fyId, name)` | Adds a new client with all fields initialised to defaults |
+| `createClient(uid, fyId, name, mobile?)` | Adds a new client with all fields initialised to defaults; `mobile` defaults to `null` |
 | `updateClient(uid, fyId, clientId, data)` | Merges partial update + sets `updatedAt: serverTimestamp()` |
 | `deleteClient(uid, fyId, clientId)` | Permanently deletes client document |
 | `updateUserSettings(uid, data)` | `setDoc` with merge — creates or updates settings |
 
-#### Constant
+#### Constants
 
 ```typescript
 const DEFAULT_TAGS = ['Salaried', 'Capital Gain', 'Business Owner', 'Foreign Assets'];
+
+const DEFAULT_WA_MESSAGES: string[] = [
+  // 5 built-in ITR filing fee reminder templates
+  // Each supports {name}, {amount}, {fy} placeholders
+];
 ```
+
+### `lib/upiQr.ts`
+
+```typescript
+async function downloadUpiQr(
+  upiId: string,
+  amountINR: number | null,
+  clientName: string
+): Promise<void>
+```
+
+Builds a `upi://pay?pa=<upiId>&pn=<clientName>&am=<amount>&cu=INR` URI, renders it as a 400 × 400 px PNG using the `qrcode` package, and triggers a browser download named `UPI_QR_<clientName>.png`. If `amountINR` is null or ≤ 0, the amount parameter is omitted from the URI (open-amount QR).
 
 ### `AuthContext.tsx`
 
@@ -563,6 +653,10 @@ All set as Replit Secrets (exposed to Vite as `VITE_*`):
 | `VITE_FIREBASE_APP_ID` | Firebase App ID |
 | `SESSION_SECRET` | Reserved for future server-side session use |
 
+`firebase.ts` validates all six `VITE_FIREBASE_*` variables at startup and throws a descriptive error if any are missing, preventing silent misconfiguration.
+
+For GitHub Pages deployment, all six `VITE_FIREBASE_*` variables must also be added to the GitHub repo under **Settings → Secrets → Actions** so the CI build can inject them.
+
 ---
 
 ## Running Locally
@@ -602,3 +696,15 @@ Component handler (e.g. handleDoneConfirm in ClientRow)
 ```
 
 All writes are optimistic from the user's perspective — the UI updates within a single React render cycle because the Firestore listener fires near-instantly on the same client.
+
+---
+
+## Deployment
+
+The app is deployed to **GitHub Pages** via GitHub Actions (`.github/workflows/deploy.yml`):
+
+1. Triggered on push to `main`.
+2. Builds with `pnpm --filter @workspace/ca-fee-manager run build` — Vite injects all `VITE_FIREBASE_*` secrets from GitHub Actions secrets.
+3. Copies `dist/index.html` → `dist/404.html` to handle deep-link refreshes on Pages.
+4. Pushes the `dist/` directory to the `gh-pages` branch using `peaceiris/actions-gh-pages`.
+5. The wouter `<Router>` is given `base={import.meta.env.BASE_URL}` so all client-side routes resolve correctly under the Pages subdirectory.
