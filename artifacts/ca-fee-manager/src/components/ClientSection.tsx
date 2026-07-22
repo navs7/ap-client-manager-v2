@@ -18,7 +18,7 @@ interface ClientSectionProps {
 function renderRow(client: Client, uid: string, fyId: string, fyName: string, type: ClientSectionProps['type'], allTags: string[], waTemplate: string) {
   const t = type === 'mixed' ? client.status : type;
   if (t === 'pending')    return <ClientRow key={client.id} client={client} uid={uid} fyId={fyId} fyName={fyName} allTags={allTags} waTemplate={waTemplate} />;
-  if (t === 'partial')    return <PartialClientRow key={client.id} client={client} uid={uid} fyId={fyId} allTags={allTags} />;
+  if (t === 'partial')    return <PartialClientRow key={client.id} client={client} uid={uid} fyId={fyId} fyName={fyName} allTags={allTags} waTemplate={waTemplate} />;
   if (t === 'paid')       return <PaidClientRow key={client.id} client={client} uid={uid} fyId={fyId} allTags={allTags} />;
   return <NoServiceRow key={client.id} client={client} uid={uid} fyId={fyId} allTags={allTags} />;
 }

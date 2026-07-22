@@ -197,7 +197,7 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate }: Cl
     const amountStr = pending !== null && pending > 0 ? (formatINR(pending) ?? 'pending amount') : 'pending amount';
 
     // Use active template, falling back to built-in default
-    const DEFAULT_TEMPLATE = `Dear {name}, this is a gentle reminder regarding your pending CA fees of {amount} for FY {fy}. Kindly arrange payment at your earliest convenience. Thank you.`;
+    const DEFAULT_TEMPLATE = `Dear {name}, this is a gentle reminder regarding your pending ITR filing fees of {amount} for FY {fy}. Kindly arrange payment at your earliest convenience. Thank you.`;
     const template = waTemplate || DEFAULT_TEMPLATE;
     const message = template
       .replace(/\{name\}/g, client.name)
