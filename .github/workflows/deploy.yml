@@ -49,6 +49,11 @@ jobs:
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
 
+      - name: Copy index.html to 404.html
+        # GitHub Pages serves 404.html for unknown paths; this makes client-side routes
+        # (like /analytics) work when the user refreshes or lands directly on them.
+        run: cp artifacts/ca-fee-manager/dist/public/index.html artifacts/ca-fee-manager/dist/public/404.html
+
       - name: Deploy to gh-pages branch
         uses: JamesIves/github-pages-deploy-action@v4
         with:
