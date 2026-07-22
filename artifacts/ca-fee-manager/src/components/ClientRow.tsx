@@ -50,7 +50,7 @@ function cleanMobile(raw: string): string {
   return digits;
 }
 
-export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate }: ClientRowProps) {
+export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiId }: ClientRowProps) {
   const [open, setOpen] = useState(false);
   const [quotedFees, setQuotedFees] = useState(client.quotedFees?.toString() || '');
   const [otherDues, setOtherDues] = useState(client.otherDues?.toString() || '');
