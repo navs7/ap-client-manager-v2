@@ -15,8 +15,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GH_PAT }} # PAT used so the runner can push to gh-pages
+        # Uses the built-in GITHUB_TOKEN — no manual secret needed
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -57,7 +56,7 @@ jobs:
       - name: Deploy to gh-pages branch
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          token: ${{ secrets.GH_PAT }} # PAT authenticates the push to gh-pages
+          token: ${{ secrets.GITHUB_TOKEN }}
           branch: gh-pages
           folder: artifacts/ca-fee-manager/dist/public
           clean: true # removes stale files from previous deploys
