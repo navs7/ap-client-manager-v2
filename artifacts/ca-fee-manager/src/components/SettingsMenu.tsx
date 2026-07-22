@@ -317,7 +317,7 @@ export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
             />
             <div className="space-y-1">
               <Input
-                placeholder="Mobile number (optional)"
+                placeholder="Mobile number"
                 value={newClientMobile}
                 onChange={(e) => { setNewClientMobile(e.target.value); setMobileError(''); }}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleAddClient(); if (e.key === 'Escape') { setShowAddClient(false); } }}
@@ -331,7 +331,7 @@ export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setShowAddClient(false); setNewClientName(''); setNewClientMobile(''); setMobileError(''); }}>Cancel</Button>
-            <Button onClick={handleAddClient} disabled={adding || !newClientName.trim()} data-testid="button-confirm-add-client">
+            <Button onClick={handleAddClient} disabled={adding || !newClientName.trim() || !newClientMobile.trim()} data-testid="button-confirm-add-client">
               {adding ? 'Adding…' : 'Add Client'}
             </Button>
           </DialogFooter>
