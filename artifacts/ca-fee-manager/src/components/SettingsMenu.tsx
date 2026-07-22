@@ -40,7 +40,28 @@ export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
   // Add client
   const [showAddClient, setShowAddClient] = useState(false);
   const [newClientName, setNewClientName] = useState('');
+  const [newClientMobile, setNewClientMobile] = useState('');
+  const [mobileError, setMobileError] = useState('');
   const [adding, setAdding] = useState(false);
+
+  /** Normalise to 10-digit string for dedup comparisons, or null if not a valid mobile */
+  function normMobile(raw: string | null): string | null {
+    if (!raw) return null;
+    const d = raw.replace(/\D/g, '');
+    if (d.length === 10) return d;
+    if (d.length === 12 && d.startsWith('91')) return d.slice(2);
+    if (d.length === 11 && d.startsWith('0')) return d.slice(1);
+    return d.length >= 7 ? d : null; // keep partial but non-null so we can still dedup
+  }
+
+  const existingMobiles = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of clients) {
+      const n = normMobile(c.mobile ?? null);
+      if (n) s.add(n);
+    }
+    return s;
+  }, [clients]);
 
   // Manage tags
   const [showManageTags, setShowManageTags] = useState(false);
@@ -117,9 +138,15 @@ export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
         }
       }
       if (rows.length === 0) { toast.error('No client names found in the file'); return; }
-      let ok = 0;
-      for (const { name, mobile } of rows) { try { await createClient(uid, fyId, name, mobile); ok++; } catch { /* skip */ } }
-      toast.success(`Imported ${ok} client${ok !== 1 ? 's' : ''}`);
+      let ok = 0, skipped = 0;
+      for (const { name, mobile } of rows) {
+        const norm = normMobile(mobile);
+        if (norm && existingMobiles.has(norm)) { skipped++; continue; } // duplicate mobile → skip
+        try { await createClient(uid, fyId, name, mobile); ok++; } catch { /* skip */ }
+      }
+      const msg = ok > 0 ? `Imported ${ok} client${ok !== 1 ? 's' : ''}` : 'No new clients to import';
+      const detail = skipped > 0 ? ` (${skipped} duplicate${skipped !== 1 ? 's' : ''} skipped)` : '';
+      toast.success(msg + detail);
     } catch { toast.error('Failed to import file'); }
     finally { setImporting(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
   }
@@ -129,11 +156,21 @@ export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
     const name = newClientName.trim();
     if (!name) return;
     if (!fyId) { toast.error('Please select a financial year first'); return; }
+
+    const mobileRaw = newClientMobile.trim();
+    const norm = normMobile(mobileRaw || null);
+    if (mobileRaw && norm && existingMobiles.has(norm)) {
+      const clash = clients.find(c => normMobile(c.mobile ?? null) === norm);
+      setMobileError(`This number is already linked to "${clash?.name ?? 'another client'}".`);
+      return;
+    }
+    setMobileError('');
     setAdding(true);
     try {
-      await createClient(uid, fyId, name);
+      await createClient(uid, fyId, name, mobileRaw || null);
       toast.success(`"${name}" added`);
       setNewClientName('');
+      setNewClientMobile('');
       setShowAddClient(false);
     } catch { toast.error('Failed to add client'); }
     finally { setAdding(false); }
@@ -260,20 +297,40 @@ export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
       <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleFileSelect} className="hidden" data-testid="input-excel-file" />
 
       {/* ── Add Client Dialog ── */}
-      <Dialog open={showAddClient} onOpenChange={(o) => { setShowAddClient(o); if (!o) setNewClientName(''); }}>
+      <Dialog open={showAddClient} onOpenChange={(o) => {
+        setShowAddClient(o);
+        if (!o) { setNewClientName(''); setNewClientMobile(''); setMobileError(''); }
+      }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Add Client</DialogTitle>
-            <DialogDescription>Enter the client's name to add them to the current financial year.</DialogDescription>
+            <DialogDescription>Enter the client's name and mobile number for this financial year.</DialogDescription>
           </DialogHeader>
-          <div className="py-2">
-            <Input autoFocus placeholder="Client name" value={newClientName}
+          <div className="py-2 space-y-3">
+            <Input
+              autoFocus
+              placeholder="Client name"
+              value={newClientName}
               onChange={(e) => setNewClientName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleAddClient(); if (e.key === 'Escape') { setShowAddClient(false); setNewClientName(''); } }}
-              data-testid="input-new-client-name" />
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAddClient(); if (e.key === 'Escape') { setShowAddClient(false); } }}
+              data-testid="input-new-client-name"
+            />
+            <div className="space-y-1">
+              <Input
+                placeholder="Mobile number (optional)"
+                value={newClientMobile}
+                onChange={(e) => { setNewClientMobile(e.target.value); setMobileError(''); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleAddClient(); if (e.key === 'Escape') { setShowAddClient(false); } }}
+                inputMode="tel"
+                data-testid="input-new-client-mobile"
+              />
+              {mobileError && (
+                <p className="text-xs text-destructive">{mobileError}</p>
+              )}
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setShowAddClient(false); setNewClientName(''); }}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setShowAddClient(false); setNewClientName(''); setNewClientMobile(''); setMobileError(''); }}>Cancel</Button>
             <Button onClick={handleAddClient} disabled={adding || !newClientName.trim()} data-testid="button-confirm-add-client">
               {adding ? 'Adding…' : 'Add Client'}
             </Button>
