@@ -40,7 +40,10 @@ const QUICK_PILLS: FilterType[] = ['pending', 'partial', 'paid', 'no_service', '
 export function Dashboard() {
   const { user } = useAuth();
   const { years, loading: yearsLoading } = useFinancialYears(user?.uid);
-  const [selectedYearId, setSelectedYearId] = useState<string | null>(null);
+  const SESSION_KEY = 'ca_selected_fy';
+  const [selectedYearId, setSelectedYearId] = useState<string | null>(
+    () => sessionStorage.getItem(SESSION_KEY),
+  );
   const { clients, loading: clientsLoading } = useClients(user?.uid, selectedYearId || undefined);
   const { customTags, waTemplate, waMessages } = useUserSettings(user?.uid);
   const [searchQuery, setSearchQuery] = useState('');
@@ -60,22 +63,27 @@ export function Dashboard() {
 
   const allTags = useMemo(() => [...DEFAULT_TAGS, ...customTags], [customTags]);
 
+  function persistFY(id: string) {
+    sessionStorage.setItem(SESSION_KEY, id);
+    setSelectedYearId(id);
+  }
+
   useEffect(() => {
     if (selectedYearId || yearsLoading || !user) return;
     const currentFY = getCurrentFYName();
     const existing = years.find((y) => y.name === currentFY);
     if (existing) {
-      setSelectedYearId(existing.id);
+      persistFY(existing.id);
     } else {
       createFinancialYear(user.uid, currentFY)
-        .then(setSelectedYearId)
+        .then(persistFY)
         .catch(() => toast.error('Failed to initialise current financial year'));
     }
   }, [years, yearsLoading, selectedYearId, user]);
 
   async function handleSelectFY(fyName: string, existingId: string | null) {
-    if (existingId) { setSelectedYearId(existingId); return; }
-    try { setSelectedYearId(await createFinancialYear(user!.uid, fyName)); }
+    if (existingId) { persistFY(existingId); return; }
+    try { persistFY(await createFinancialYear(user!.uid, fyName)); }
     catch { toast.error('Failed to open financial year'); }
   }
 
