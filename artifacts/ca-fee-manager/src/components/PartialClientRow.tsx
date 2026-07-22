@@ -161,10 +161,11 @@ export function PartialClientRow({ client, uid, fyId, fyName, allTags, waTemplat
             )}
           </div>
           <div className="flex items-center gap-1.5 shrink-0 mt-0.5" onClick={(e) => e.stopPropagation()}>
-            <Button size="icon" onClick={() => setShowPaidDialog(true)} disabled={updating}
+            <Button size="sm" onClick={() => setShowPaidDialog(true)} disabled={updating}
               title="Mark as Paid in Full"
-              className="h-7 w-7 bg-accent hover:bg-accent/90 text-accent-foreground" data-testid={`button-paid-full-${client.id}`}>
-              <CheckCircle2 className="w-3.5 h-3.5" />
+              className="h-7 px-2.5 text-xs bg-accent hover:bg-accent/90 text-accent-foreground" data-testid={`button-paid-full-${client.id}`}>
+              <CheckCircle2 className="w-3.5 h-3.5 sm:mr-1" />
+              <span className="hidden sm:inline">Paid in Full</span>
             </Button>
             <Button size="icon" variant={client.itrFiled ? 'default' : 'outline'} onClick={handleItrFiled} disabled={updating}
               title={client.itrFiled ? 'ITR Filed — click to unmark' : 'Mark ITR Filed'}
