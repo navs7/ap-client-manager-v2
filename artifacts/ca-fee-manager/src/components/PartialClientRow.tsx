@@ -71,8 +71,7 @@ export function PartialClientRow({ client, uid, fyId, fyName, allTags, waTemplat
       .replace(/\{fy\}/g, fyName || 'current year');
 
     if (upiId && pendingAmt !== null && pendingAmt > 0) {
-      const upiLink = `upi://pay?pa=${encodeURIComponent(upiId)}&am=${pendingAmt.toFixed(2)}&tn=${encodeURIComponent(`ITR Filing Fees - ${client.name}`)}&cu=INR`;
-      message += `\n\nPay ${amountStr} via UPI:\n${upiLink}`;
+      message += `\n\nPay ${amountStr} via UPI:\nUPI ID: ${upiId}`;
     }
 
     window.open(`https://wa.me/${cleanMobile(mobile)}?text=${encodeURIComponent(message)}`, '_blank');

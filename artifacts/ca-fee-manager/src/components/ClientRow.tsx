@@ -204,8 +204,7 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
       .replace(/\{fy\}/g, fyName || 'current year');
 
     if (upiId && pending !== null && pending > 0) {
-      const upiLink = `upi://pay?pa=${encodeURIComponent(upiId)}&am=${pending.toFixed(2)}&tn=${encodeURIComponent(`ITR Filing Fees - ${client.name}`)}&cu=INR`;
-      message += `\n\nPay ${amountStr} via UPI:\n${upiLink}`;
+      message += `\n\nPay ${amountStr} via UPI:\nUPI ID: ${upiId}`;
     }
 
     window.open(`https://wa.me/${cleanMobile(mobile)}?text=${encodeURIComponent(message)}`, '_blank');
