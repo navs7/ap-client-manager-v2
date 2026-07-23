@@ -10,7 +10,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
 import { Check, UserX, Pencil, CheckCheck, ChevronDown, ChevronRight, CreditCard, Tag, FileCheck2 } from 'lucide-react';
-import { downloadUpiQr } from '@/lib/upiQr';
+
 
 function WhatsAppIcon({ className }: { className?: string }) {
   return (
@@ -196,21 +196,17 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
     const pending = totalFees > 0 ? totalFees - received : null;
     const amountStr = pending !== null && pending > 0 ? (formatINR(pending) ?? 'pending amount') : 'pending amount';
 
-    if (upiId) {
-      try {
-        await downloadUpiQr(upiId, pending, client.name);
-        toast.success('QR code downloaded — attach it in WhatsApp');
-      } catch {
-        toast.error('Failed to generate QR code');
-      }
-    }
-
     const DEFAULT_TEMPLATE = `Dear {name}, this is a gentle reminder regarding your pending ITR filing fees of {amount} for FY {fy}. Kindly arrange payment at your earliest convenience. Thank you.`;
     const template = waTemplate || DEFAULT_TEMPLATE;
-    const message = template
+    let message = template
       .replace(/\{name\}/g, client.name)
       .replace(/\{amount\}/g, amountStr)
       .replace(/\{fy\}/g, fyName || 'current year');
+
+    if (upiId && pending !== null && pending > 0) {
+      const upiLink = `upi://pay?pa=${encodeURIComponent(upiId)}&am=${pending.toFixed(2)}&tn=${encodeURIComponent(`ITR Filing Fees - ${client.name}`)}&cu=INR`;
+      message += `\n\nPay ${amountStr} via UPI:\n${upiLink}`;
+    }
 
     window.open(`https://wa.me/${cleanMobile(mobile)}?text=${encodeURIComponent(message)}`, '_blank');
     const entry = makeEntry(`WhatsApp reminder sent — ${amountStr} pending`);
