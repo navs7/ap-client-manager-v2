@@ -15,7 +15,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { createClient, deleteClient, updateUserSettings, useUserSettings, DEFAULT_TAGS, DEFAULT_WA_MESSAGES, Client } from '@/hooks/useFirestore';
+import { createClient, updateClient, deleteClient, updateUserSettings, useUserSettings, DEFAULT_TAGS, DEFAULT_WA_MESSAGES, Client } from '@/hooks/useFirestore';
 import { TagChip } from './TagSelector';
 import { toast } from 'sonner';
 
@@ -206,15 +206,31 @@ export function SettingsMenu({ uid, fyId, fyName, clients }: SettingsMenuProps) 
         }
       }
       if (rows.length === 0) { toast.error('No client names found in the file'); return; }
-      let ok = 0, skipped = 0;
+      let ok = 0, updated = 0, skipped = 0;
       for (const { name, mobile } of rows) {
         const norm = normMobile(mobile);
-        if (norm && existingMobiles.has(norm)) { skipped++; continue; } // duplicate mobile → skip
+
+        // 1 — mobile already on an existing client → full duplicate, skip
+        if (norm && existingMobiles.has(norm)) { skipped++; continue; }
+
+        // 2 — same name exists but that client has no mobile → patch mobile in
+        const nameLower = name.trim().toLowerCase();
+        const noMobileMatch = mobile
+          ? clients.find(c => c.name.trim().toLowerCase() === nameLower && !c.mobile)
+          : null;
+        if (noMobileMatch) {
+          try { await updateClient(uid, fyId, noMobileMatch.id, { mobile }); updated++; } catch { /* skip */ }
+          continue;
+        }
+
+        // 3 — genuinely new → create
         try { await createClient(uid, fyId, name, mobile); ok++; } catch { /* skip */ }
       }
-      const msg = ok > 0 ? `Imported ${ok} client${ok !== 1 ? 's' : ''}` : 'No new clients to import';
-      const detail = skipped > 0 ? ` (${skipped} duplicate${skipped !== 1 ? 's' : ''} skipped)` : '';
-      toast.success(msg + detail);
+      const parts: string[] = [];
+      if (ok > 0)      parts.push(`${ok} client${ok !== 1 ? 's' : ''} imported`);
+      if (updated > 0) parts.push(`${updated} phone number${updated !== 1 ? 's' : ''} added`);
+      if (skipped > 0) parts.push(`${skipped} duplicate${skipped !== 1 ? 's' : ''} skipped`);
+      toast.success(parts.length ? parts.join(' · ') : 'No new clients to import');
     } catch { toast.error('Failed to import file'); }
     finally { setImporting(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
   }
