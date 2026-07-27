@@ -1,7 +1,7 @@
 import { useRef, useState, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import * as XLSX from 'xlsx';
-import { Settings, Upload, UserPlus, Tags, Plus, Trash2, Search, X, FileDown, BarChart2, MessageSquare, Check, Pencil, QrCode } from 'lucide-react';
+import { Settings, Upload, UserPlus, Tags, Plus, Trash2, Search, X, FileDown, BarChart2, MessageSquare, Check, Pencil, QrCode, Sheet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -22,6 +22,7 @@ import { toast } from 'sonner';
 interface SettingsMenuProps {
   uid: string;
   fyId: string | null;
+  fyName: string;
   clients: Client[];
 }
 
@@ -32,7 +33,7 @@ const STATUS_LABELS: Record<Client['status'], { label: string; className: string
   no_service: { label: 'No Service', className: 'bg-red-50 text-red-600 border-red-200 dark:bg-red-950/20 dark:text-red-400 dark:border-red-800' },
 };
 
-export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
+export function SettingsMenu({ uid, fyId, fyName, clients }: SettingsMenuProps) {
   const [, navigate] = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
@@ -90,6 +91,73 @@ export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
     if (!q) return clients;
     return clients.filter((c) => c.name.toLowerCase().includes(q));
   }, [clients, deleteSearch]);
+
+  // ── Export full report ──────────────────────────────────────────────────────
+  function exportReport() {
+    if (!clients.length) { toast.error('No clients to export'); return; }
+
+    const wb = XLSX.utils.book_new();
+
+    // ── Sheet 1: Clients summary ──
+    const clientRows = clients.map((c) => {
+      const total = (c.quotedFees ?? 0) + (c.otherDues ?? 0);
+      const received = c.feesReceived ?? 0;
+      const pending = total > 0 ? total - received : null;
+      const notes = (c.history ?? [])
+        .filter((h) => h.action.startsWith('Note: '))
+        .map((h) => h.action.slice(6))
+        .join(' | ');
+      return {
+        'Name':              c.name,
+        'Mobile':            c.mobile ?? '',
+        'Status':            STATUS_LABELS[c.status].label,
+        'Payment Type':      c.paymentType === 'partial' ? 'Partial' : c.paymentType === 'discount' ? 'Discount' : '',
+        'Quoted Fees (₹)':   c.quotedFees ?? '',
+        'Other Dues (₹)':    c.otherDues ?? '',
+        'Total Fees (₹)':    total || '',
+        'Fees Received (₹)': received || '',
+        'Pending (₹)':       pending ?? '',
+        'ITR Filed':         c.itrFiled ? 'Yes' : 'No',
+        'Tags':              (c.tags ?? []).join(', '),
+        'Comments':          notes,
+      };
+    });
+
+    const ws1 = XLSX.utils.json_to_sheet(clientRows);
+    ws1['!cols'] = [
+      { wch: 25 }, { wch: 14 }, { wch: 12 }, { wch: 13 },
+      { wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 16 },
+      { wch: 12 }, { wch: 10 }, { wch: 30 }, { wch: 50 },
+    ];
+    XLSX.utils.book_append_sheet(wb, ws1, 'Clients');
+
+    // ── Sheet 2: Full history ──
+    const historyRows: object[] = [];
+    for (const c of clients) {
+      const sorted = [...(c.history ?? [])].sort(
+        (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()
+      );
+      for (const h of sorted) {
+        historyRows.push({
+          'Client Name': c.name,
+          'Date & Time': new Date(h.at).toLocaleString('en-IN', {
+            day: '2-digit', month: 'short', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', hour12: true,
+          }),
+          'Action': h.action,
+        });
+      }
+    }
+    if (historyRows.length) {
+      const ws2 = XLSX.utils.json_to_sheet(historyRows);
+      ws2['!cols'] = [{ wch: 25 }, { wch: 22 }, { wch: 70 }];
+      XLSX.utils.book_append_sheet(wb, ws2, 'History');
+    }
+
+    const label = fyName || fyId || 'export';
+    XLSX.writeFile(wb, `CA_Fee_Report_${label}.xlsx`);
+    toast.success('Report exported');
+  }
 
   // ── Sample Excel download ───────────────────────────────────────────────────
   function downloadSampleExcel() {
@@ -650,6 +718,9 @@ export function SettingsMenu({ uid, fyId, clients }: SettingsMenuProps) {
           </DropdownMenuItem>
           <DropdownMenuItem onClick={downloadSampleExcel} data-testid="menu-sample-excel">
             <FileDown className="w-4 h-4 mr-2 shrink-0" />Download Sample
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={exportReport} disabled={!fyId || clients.length === 0} data-testid="menu-export-report">
+            <Sheet className="w-4 h-4 mr-2 shrink-0" />Export Report
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
