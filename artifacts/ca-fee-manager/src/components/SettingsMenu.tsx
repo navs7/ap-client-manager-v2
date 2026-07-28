@@ -1,5 +1,5 @@
 import { useRef, useState, useMemo } from 'react';
-import { useLocation } from 'wouter';
+import { useNavigationGuard } from '@/contexts/NavigationGuardContext';
 import * as XLSX from 'xlsx';
 import { Settings, Upload, UserPlus, Tags, Plus, Trash2, Search, X, FileDown, BarChart2, MessageSquare, Check, Pencil, QrCode, Sheet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -34,7 +34,7 @@ const STATUS_LABELS: Record<Client['status'], { label: string; className: string
 };
 
 export function SettingsMenu({ uid, fyId, fyName, clients }: SettingsMenuProps) {
-  const [, navigate] = useLocation();
+  const { safeNavigate } = useNavigationGuard();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
 
@@ -765,7 +765,7 @@ export function SettingsMenu({ uid, fyId, fyName, clients }: SettingsMenuProps) 
             {upiId && <span className="ml-auto text-xs text-muted-foreground font-mono truncate max-w-[80px]">{upiId}</span>}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => navigate('/analytics')} data-testid="menu-analytics">
+          <DropdownMenuItem onClick={() => safeNavigate('/analytics')} data-testid="menu-analytics">
             <BarChart2 className="w-4 h-4 mr-2 shrink-0" />Analytics
           </DropdownMenuItem>
         </DropdownMenuContent>

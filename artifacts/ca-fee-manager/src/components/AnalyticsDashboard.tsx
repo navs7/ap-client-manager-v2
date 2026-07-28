@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useLocation } from 'wouter';
+import { useNavigationGuard } from '@/contexts/NavigationGuardContext';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -111,7 +111,7 @@ function Section({ title, children, className = '' }: { title: string; children:
 
 export function AnalyticsDashboard() {
   const { user } = useAuth();
-  const [, navigate] = useLocation();
+  const { safeNavigate } = useNavigationGuard();
   const { years, loading: yearsLoading } = useFinancialYears(user?.uid);
   const SESSION_KEY = 'ca_selected_fy';
   const [selectedYearId, setSelectedYearId] = useState<string | null>(
@@ -278,7 +278,7 @@ export function AnalyticsDashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 gap-4">
             <div className="flex items-center gap-3 min-w-0">
-              <Button variant="ghost" size="icon" onClick={() => navigate('/')} title="Back to Dashboard">
+              <Button variant="ghost" size="icon" onClick={() => safeNavigate('/')} title="Back to Dashboard">
                 <ArrowLeft className="w-4 h-4" />
               </Button>
               <div className="min-w-0">

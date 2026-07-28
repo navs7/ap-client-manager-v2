@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { Switch, Route } from 'wouter';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { NavigationGuardProvider } from '@/contexts/NavigationGuardContext';
 import { Login } from '@/components/Login';
 import { Dashboard } from '@/components/Dashboard';
 import { AnalyticsDashboard } from '@/components/AnalyticsDashboard';
@@ -25,10 +26,12 @@ function AppContent() {
   if (!user) return <Login />;
 
   return (
-    <Switch>
-      <Route path="/analytics" component={AnalyticsDashboard} />
-      <Route component={Dashboard} />
-    </Switch>
+    <NavigationGuardProvider>
+      <Switch>
+        <Route path="/analytics" component={AnalyticsDashboard} />
+        <Route component={Dashboard} />
+      </Switch>
+    </NavigationGuardProvider>
   );
 }
 
