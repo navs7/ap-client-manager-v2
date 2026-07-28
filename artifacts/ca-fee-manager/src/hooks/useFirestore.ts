@@ -18,6 +18,7 @@ export const DEFAULT_TAGS = ['Salaried', 'Capital Gain', 'Business Owner', 'Fore
 
 export const DEFAULT_WA_MESSAGES = [
   `Dear {name}, this is a gentle reminder regarding your pending ITR filing fees of {amount} for FY {fy}. Kindly arrange payment at your earliest convenience. Thank you.`,
+  `Dear {name},\nYour ITR has been successfully filed in the category {category} for FY {fy}. The payment of Rs {amount} for this year ITR filing is currently due.\n{breakdown}\nKindly arrange payment at your earliest convenience. Thank you.`,
   `Hi {name}, hope you're doing well. This is a friendly reminder about your outstanding ITR filing fees of {amount} for FY {fy}. Please feel free to reach out if you have any queries. Thank you.`,
   `Dear {name}, your ITR filing fees of {amount} for FY {fy} are pending. Request you to kindly clear the dues at your earliest. For any queries, feel free to contact us.`,
   `Hi {name}, a gentle reminder that ITR filing fees of {amount} are due for FY {fy}. Kindly arrange payment at your earliest convenience. Thank you for your trust.`,

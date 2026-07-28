@@ -63,16 +63,39 @@ export function PartialClientRow({ client, uid, fyId, fyName, allTags, waTemplat
     const pendingAmt = totalFees > 0 ? totalFees - received : null;
     const amountStr = pendingAmt !== null && pendingAmt > 0 ? formatINRStr(pendingAmt) : 'pending amount';
 
+    // {category} — first matching tag wins
+    const tags = client.tags || [];
+    const category = tags.includes('Business Owner') ? 'Business'
+      : tags.includes('Capital Gain') ? 'Capital Gain'
+      : tags.includes('Salaried') ? 'Salaried'
+      : '';
+
+    // {breakdown} block — only when other dues items exist
+    const otherItems = client.otherDuesItems ?? [];
+    let breakdownBlock = '';
+    if (otherItems.length > 0 && totalFees > 0) {
+      const lines: string[] = ['The breakup of above mentioned amount is:'];
+      if (client.quotedFees) lines.push(`Fees for ITR filing - ${formatINRStr(client.quotedFees)}`);
+      for (const item of otherItems) lines.push(`${item.type || 'Other Dues'} - ${formatINRStr(item.amount)}`);
+      lines.push(`Total - ${formatINRStr(totalFees)}`);
+      breakdownBlock = lines.join('\n');
+    }
+
     const DEFAULT_TEMPLATE = `Dear {name}, this is a gentle reminder regarding your pending ITR filing fees of {amount} for FY {fy}. Kindly arrange payment at your earliest convenience. Thank you.`;
     const template = waTemplate || DEFAULT_TEMPLATE;
+    const hasBreakdownPlaceholder = template.includes('{breakdown}');
+
     let message = template
       .replace(/\{name\}/g, client.name)
       .replace(/\{amount\}/g, amountStr)
-      .replace(/\{fy\}/g, fyName || 'current year');
+      .replace(/\{fy\}/g, fyName || 'current year')
+      .replace(/\{category\}/g, category);
 
-    // Fees breakdown when other dues items exist
-    const otherItems = client.otherDuesItems ?? [];
-    if (otherItems.length > 0) {
+    if (hasBreakdownPlaceholder) {
+      message = breakdownBlock
+        ? message.replace(/\{breakdown\}/g, breakdownBlock)
+        : message.replace(/\n?\{breakdown\}\n?/g, '');
+    } else if (otherItems.length > 0) {
       const lines: string[] = [];
       if (client.quotedFees) lines.push(`  • ITR Filing Fees: ${formatINRStr(client.quotedFees)}`);
       for (const item of otherItems) lines.push(`  • ${item.type || 'Other Dues'}: ${formatINRStr(item.amount)}`);
