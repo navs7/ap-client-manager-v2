@@ -118,16 +118,28 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
   }
   function saveDuesItems(items: DuesItemLocal[]) {
     clearTimeout(duesItemsTimeoutRef.current);
-    duesItemsTimeoutRef.current = setTimeout(() => {
+    duesItemsTimeoutRef.current = setTimeout(async () => {
       const converted: OtherDuesItem[] = items.map(i => ({
         id: i.id,
         amount: parseFloat(i.amount) || 0,
         type: i.type.trim() || 'Other Dues',
       }));
       const total = converted.reduce((s, i) => s + i.amount, 0);
-      updateClient(uid, fyId, client.id, {
+      const nonZero = converted.filter(i => i.amount > 0);
+      let action: string;
+      if (nonZero.length === 0) {
+        action = 'Other Dues cleared';
+      } else if (nonZero.length === 1) {
+        action = `Other Dues updated — ${nonZero[0].type}: ${formatINR(nonZero[0].amount)}`;
+      } else {
+        const breakdown = nonZero.map(i => `${i.type}: ${formatINR(i.amount)}`).join(', ');
+        action = `Other Dues updated — ${formatINR(total)} total (${breakdown})`;
+      }
+      const entry = makeEntry(action);
+      await updateClient(uid, fyId, client.id, {
         otherDues: total || null,
         otherDuesItems: converted,
+        history: [...(client.history || []), entry],
       });
     }, 600);
   }
