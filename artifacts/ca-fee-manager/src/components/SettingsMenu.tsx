@@ -155,7 +155,8 @@ export function SettingsMenu({ uid, fyId, fyName, clients }: SettingsMenuProps) 
     }
 
     const label = fyName || fyId || 'export';
-    XLSX.writeFile(wb, `CA_Fee_Report_${label}.xlsx`);
+    const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-');
+    XLSX.writeFile(wb, `CA_Fee_Report_${label}_${today}.xlsx`);
     toast.success('Report exported');
   }
 
