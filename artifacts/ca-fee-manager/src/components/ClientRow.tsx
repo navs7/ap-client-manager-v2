@@ -61,7 +61,7 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
   const [duesItems, setDuesItems] = useState<DuesItemLocal[]>(() => {
     const items = client.otherDuesItems;
     if (items?.length) return items.map(i => ({ id: i.id, amount: i.amount.toString(), type: i.type }));
-    if (client.otherDues !== null) return [{ id: crypto.randomUUID(), amount: client.otherDues.toString(), type: 'Other Dues' }];
+    if (client.otherDues != null) return [{ id: crypto.randomUUID(), amount: client.otherDues.toString(), type: 'Other Dues' }];
     return [];
   });
   const [updating, setUpdating] = useState(false);
@@ -84,7 +84,7 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
     const items = client.otherDuesItems;
     if (items?.length) {
       setDuesItems(items.map(i => ({ id: i.id, amount: i.amount.toString(), type: i.type })));
-    } else if (client.otherDues !== null) {
+    } else if (client.otherDues != null) {
       setDuesItems([{ id: crypto.randomUUID(), amount: client.otherDues.toString(), type: 'Other Dues' }]);
     } else {
       setDuesItems([]);
