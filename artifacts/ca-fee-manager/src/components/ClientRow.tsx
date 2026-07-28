@@ -37,6 +37,8 @@ interface ClientRowProps {
 
 const FIXED_FEE_PILLS = [1000, 1500, 2000, 2500, 3000, 4000];
 
+interface DuesItemLocal { id: string; amount: string; type: string; }
+
 function formatINR(amount: number | null | undefined) {
   if (amount === null || amount === undefined) return null;
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
@@ -56,15 +58,12 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
   const [quotedFees, setQuotedFees] = useState(client.quotedFees?.toString() || '');
   const [feesReceived, setFeesReceived] = useState(client.feesReceived?.toString() || '');
 
-  // ── Other Dues items (local state uses strings for inputs) ──────────────────
-  interface DuesItemLocal { id: string; amount: string; type: string; }
-  function initDuesItems(): DuesItemLocal[] {
+  const [duesItems, setDuesItems] = useState<DuesItemLocal[]>(() => {
     const items = client.otherDuesItems;
     if (items?.length) return items.map(i => ({ id: i.id, amount: i.amount.toString(), type: i.type }));
     if (client.otherDues !== null) return [{ id: crypto.randomUUID(), amount: client.otherDues.toString(), type: 'Other Dues' }];
     return [];
-  }
-  const [duesItems, setDuesItems] = useState<DuesItemLocal[]>(initDuesItems);
+  });
   const [updating, setUpdating] = useState(false);
   const [feesReceivedEditing, setFeesReceivedEditing] = useState(false);
   const [exiting, setExiting] = useState(false);
