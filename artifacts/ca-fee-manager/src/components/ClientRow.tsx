@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Client, HistoryEntry, updateClient } from '@/hooks/useFirestore';
+import { Client, HistoryEntry, OtherDuesItem, updateClient } from '@/hooks/useFirestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -9,7 +9,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
-import { Check, UserX, Pencil, CheckCheck, ChevronDown, ChevronRight, CreditCard, Tag, FileCheck2 } from 'lucide-react';
+import { Check, UserX, Pencil, CheckCheck, ChevronDown, ChevronRight, CreditCard, Tag, FileCheck2, Plus, X } from 'lucide-react';
 
 
 function WhatsAppIcon({ className }: { className?: string }) {
@@ -54,8 +54,17 @@ function cleanMobile(raw: string): string {
 export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiId }: ClientRowProps) {
   const [open, setOpen] = useState(false);
   const [quotedFees, setQuotedFees] = useState(client.quotedFees?.toString() || '');
-  const [otherDues, setOtherDues] = useState(client.otherDues?.toString() || '');
   const [feesReceived, setFeesReceived] = useState(client.feesReceived?.toString() || '');
+
+  // ── Other Dues items (local state uses strings for inputs) ──────────────────
+  interface DuesItemLocal { id: string; amount: string; type: string; }
+  function initDuesItems(): DuesItemLocal[] {
+    const items = client.otherDuesItems;
+    if (items?.length) return items.map(i => ({ id: i.id, amount: i.amount.toString(), type: i.type }));
+    if (client.otherDues !== null) return [{ id: crypto.randomUUID(), amount: client.otherDues.toString(), type: 'Other Dues' }];
+    return [];
+  }
+  const [duesItems, setDuesItems] = useState<DuesItemLocal[]>(initDuesItems);
   const [updating, setUpdating] = useState(false);
   const [feesReceivedEditing, setFeesReceivedEditing] = useState(false);
   const [exiting, setExiting] = useState(false);
@@ -67,13 +76,20 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
   const [partialData, setPartialData] = useState<PartialDialogData | null>(null);
 
   const quotedTimeoutRef = useRef<NodeJS.Timeout>();
-  const otherDuesTimeoutRef = useRef<NodeJS.Timeout>();
+  const duesItemsTimeoutRef = useRef<NodeJS.Timeout>();
   const receivedTimeoutRef = useRef<NodeJS.Timeout>();
 
   useEffect(() => {
     setQuotedFees(client.quotedFees?.toString() || '');
-    setOtherDues(client.otherDues?.toString() || '');
     setFeesReceived(client.feesReceived?.toString() || '');
+    const items = client.otherDuesItems;
+    if (items?.length) {
+      setDuesItems(items.map(i => ({ id: i.id, amount: i.amount.toString(), type: i.type })));
+    } else if (client.otherDues !== null) {
+      setDuesItems([{ id: crypto.randomUUID(), amount: client.otherDues.toString(), type: 'Other Dues' }]);
+    } else {
+      setDuesItems([]);
+    }
   }, [client.quotedFees, client.otherDues, client.feesReceived]);
 
   async function handleItrFiled() {
@@ -101,14 +117,33 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
       updateField('quotedFees', num);
     }, 600);
   }
-  function handleOtherDuesChange(value: string) {
-    setOtherDues(value);
-    clearTimeout(otherDuesTimeoutRef.current);
-    otherDuesTimeoutRef.current = setTimeout(() => {
-      const num = value === '' ? null : Number(value);
-      if (value !== '' && isNaN(num as number)) return;
-      updateField('otherDues', num);
+  function saveDuesItems(items: DuesItemLocal[]) {
+    clearTimeout(duesItemsTimeoutRef.current);
+    duesItemsTimeoutRef.current = setTimeout(() => {
+      const converted: OtherDuesItem[] = items.map(i => ({
+        id: i.id,
+        amount: parseFloat(i.amount) || 0,
+        type: i.type.trim() || 'Other Dues',
+      }));
+      const total = converted.reduce((s, i) => s + i.amount, 0);
+      updateClient(uid, fyId, client.id, {
+        otherDues: total || null,
+        otherDuesItems: converted,
+      });
     }, 600);
+  }
+  function handleDuesItemChange(id: string, field: 'amount' | 'type', value: string) {
+    const next = duesItems.map(i => i.id === id ? { ...i, [field]: value } : i);
+    setDuesItems(next);
+    saveDuesItems(next);
+  }
+  function handleAddDuesItem() {
+    setDuesItems(prev => [...prev, { id: crypto.randomUUID(), amount: '', type: 'Other Dues' }]);
+  }
+  function handleRemoveDuesItem(id: string) {
+    const next = duesItems.filter(i => i.id !== id);
+    setDuesItems(next);
+    saveDuesItems(next);
   }
   function handleQuotedPill(fee: number) {
     setQuotedFees(fee.toString());
@@ -203,6 +238,18 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
       .replace(/\{amount\}/g, amountStr)
       .replace(/\{fy\}/g, fyName || 'current year');
 
+    // Fees breakdown when other dues items exist
+    const otherItems = client.otherDuesItems ?? [];
+    if (otherItems.length > 0) {
+      const lines: string[] = [];
+      if (client.quotedFees) lines.push(`  • ITR Filing Fees: ${formatINR(client.quotedFees)}`);
+      for (const item of otherItems) lines.push(`  • ${item.type || 'Other Dues'}: ${formatINR(item.amount)}`);
+      if (lines.length > 1) lines.push(`  Total: ${formatINR(totalFees)}`);
+      if (received > 0) lines.push(`  Received: ${formatINR(received)}`);
+      lines.push(`  Pending: ${amountStr}`);
+      message += `\n\nFees breakdown:\n${lines.join('\n')}`;
+    }
+
     if (upiId && pending !== null && pending > 0) {
       message += `\n\nPay ${amountStr} via UPI:\nUPI ID: ${upiId}`;
     }
@@ -267,7 +314,8 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
     }
   }
 
-  const hasOtherDues = (client.otherDues ?? 0) > 0;
+  const duesTotal = duesItems.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
+  const hasOtherDues = (client.otherDues ?? 0) > 0 || duesTotal > 0;
   const totalFees = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
   const headerFeeDisplay = hasOtherDues ? formatINR(totalFees) : formatINR(client.quotedFees);
   const receivedDisplay = formatINR(client.feesReceived);
@@ -425,13 +473,51 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
                 </div>
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Other Dues</label>
-                <Input type="number" value={otherDues} onChange={(e) => handleOtherDuesChange(e.target.value)}
-                  placeholder="0" className="font-mono" data-testid={`input-other-dues-${client.id}`} />
-                {hasOtherDues && (
-                  <p className="text-xs text-muted-foreground font-mono">
-                    Total: <span className="font-semibold text-foreground">{formatINR(totalFees)}</span>
-                  </p>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-muted-foreground">Other Dues</label>
+                  <button onClick={handleAddDuesItem}
+                    className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    title="Add another due">
+                    <Plus className="w-3 h-3" />Add
+                  </button>
+                </div>
+                {duesItems.length === 0 ? (
+                  <button onClick={handleAddDuesItem}
+                    className="w-full h-9 flex items-center justify-center gap-1.5 rounded-md border border-dashed border-border text-xs text-muted-foreground hover:border-accent/50 hover:text-foreground transition-colors">
+                    <Plus className="w-3.5 h-3.5" />Add other due
+                  </button>
+                ) : (
+                  <div className="space-y-1.5">
+                    {duesItems.map((item) => (
+                      <div key={item.id} className="flex gap-1.5 items-center">
+                        <Input
+                          type="number"
+                          value={item.amount}
+                          onChange={(e) => handleDuesItemChange(item.id, 'amount', e.target.value)}
+                          placeholder="0"
+                          className="font-mono w-24 shrink-0"
+                          data-testid={`input-other-dues-${client.id}`}
+                        />
+                        <Input
+                          value={item.type}
+                          onChange={(e) => handleDuesItemChange(item.id, 'type', e.target.value)}
+                          placeholder="Other Dues"
+                          className="flex-1 min-w-0 text-sm"
+                        />
+                        <button
+                          onClick={() => handleRemoveDuesItem(item.id)}
+                          className="shrink-0 h-9 w-9 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          title="Remove">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                    {hasOtherDues && (
+                      <p className="text-xs text-muted-foreground font-mono">
+                        Total: <span className="font-semibold text-foreground">{formatINR(totalFees)}</span>
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -450,7 +536,7 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
                 </div>
               ) : (
                 <div className="flex gap-1">
-                  <Button size="icon" variant="outline" onClick={handleCheckFees} disabled={!quotedFees && !otherDues}
+                  <Button size="icon" variant="outline" onClick={handleCheckFees} disabled={!quotedFees && duesTotal === 0}
                     className="shrink-0 h-9 w-9 text-green-600 border-green-300 hover:bg-green-50 dark:hover:bg-green-950"
                     title="Set fees received = total fees" data-testid={`button-check-fees-${client.id}`}>
                     <Check className="w-4 h-4" />

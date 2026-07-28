@@ -36,6 +36,12 @@ export interface HistoryEntry {
   at: string; // ISO 8601 client-side timestamp
 }
 
+export interface OtherDuesItem {
+  id: string;
+  amount: number;
+  type: string; // default: 'Other Dues'
+}
+
 export interface UserSettings {
   customTags: string[];
   waMessages: string[];   // user-saved custom WA message templates
@@ -50,7 +56,8 @@ export interface Client {
   status: 'pending' | 'partial' | 'paid' | 'no_service';
   paymentType: 'partial' | 'discount' | null;
   quotedFees: number | null;
-  otherDues: number | null;
+  otherDues: number | null;         // computed total; kept for backward compat
+  otherDuesItems: OtherDuesItem[];  // individual labelled line items
   feesReceived: number | null;
   itrFiled: boolean;
   tags: string[];
@@ -142,6 +149,7 @@ export async function createClient(uid: string, fyId: string, name: string, mobi
       paymentType: null,
       quotedFees: null,
       otherDues: null,
+      otherDuesItems: [],
       feesReceived: null,
       itrFiled: false,
       tags: [],

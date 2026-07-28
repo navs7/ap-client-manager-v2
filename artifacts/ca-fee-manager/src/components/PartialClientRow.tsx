@@ -70,6 +70,18 @@ export function PartialClientRow({ client, uid, fyId, fyName, allTags, waTemplat
       .replace(/\{amount\}/g, amountStr)
       .replace(/\{fy\}/g, fyName || 'current year');
 
+    // Fees breakdown when other dues items exist
+    const otherItems = client.otherDuesItems ?? [];
+    if (otherItems.length > 0) {
+      const lines: string[] = [];
+      if (client.quotedFees) lines.push(`  • ITR Filing Fees: ${formatINRStr(client.quotedFees)}`);
+      for (const item of otherItems) lines.push(`  • ${item.type || 'Other Dues'}: ${formatINRStr(item.amount)}`);
+      if (lines.length > 1) lines.push(`  Total: ${formatINRStr(totalFees)}`);
+      if (received > 0) lines.push(`  Received: ${formatINRStr(received)}`);
+      lines.push(`  Pending: ${amountStr}`);
+      message += `\n\nFees breakdown:\n${lines.join('\n')}`;
+    }
+
     if (upiId && pendingAmt !== null && pendingAmt > 0) {
       message += `\n\nPay ${amountStr} via UPI:\nUPI ID: ${upiId}`;
     }
