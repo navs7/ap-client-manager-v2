@@ -19,6 +19,7 @@
    - [Filtering & Search](#filtering--search)
    - [Tags System](#tags-system)
    - [Fee Management](#fee-management)
+   - [Unsaved Changes Guard](#unsaved-changes-guard)
    - [ITR Filing](#itr-filing)
    - [History & Comments](#history--comments)
    - [WhatsApp Reminders](#whatsapp-reminders)
@@ -78,11 +79,13 @@ workspace/
 │   │       ├── App.tsx
 │   │       ├── index.css
 │   │       ├── contexts/
-│   │       │   └── AuthContext.tsx
+│   │       │   ├── AuthContext.tsx
+│   │       │   └── NavigationGuardContext.tsx  # Intercepts navigation when unsaved changes exist
 │   │       ├── hooks/
 │   │       │   └── useFirestore.ts
 │   │       ├── lib/
 │   │       │   ├── firebase.ts
+│   │       │   ├── dirtyRegistry.ts  # Module-level Set tracking which clients have unsaved edits
 │   │       │   ├── upiQr.ts          # UPI QR code generation & download
 │   │       │   └── utils.ts
 │   │       ├── components/
@@ -195,9 +198,24 @@ users/
             comments: string | null
             history: HistoryEntry[]
               { id: string, action: string, at: string (ISO 8601) }
+            otherDuesItems: OtherDuesItem[]   # ordered list of individual other-due line items
             createdAt: Timestamp
             updatedAt: Timestamp
 ```
+
+### `OtherDuesItem`
+
+```typescript
+interface OtherDuesItem {
+  id: string;       // crypto.randomUUID()
+  amount: number;
+  type: string;     // label shown in UI and WA breakdown, e.g. "Tax Paid", "Late Fee"
+}
+```
+
+`otherDues` (the scalar) is kept as a **computed total** for backward compat with MetricsCard and export logic. `otherDuesItems` is the source of truth for individual line items.
+
+**Backward compat:** clients that have `otherDues` set but no `otherDuesItems` array are automatically initialised with a single row `{ id, amount: otherDues, type: 'Other Dues' }` on first open.
 
 ### Key Design Decisions
 
@@ -354,16 +372,50 @@ Each pending client card has:
 
 | Field | Behaviour |
 |---|---|
-| **Quoted Fees** | Number input with debounced auto-save (600ms). Six quick-set pills: ₹1,000 / 1,500 / 2,000 / 2,500 / 3,000 / 4,000 |
-| **Other Dues** | Number input with debounced auto-save (600ms). Used for additional charges beyond the quoted fee |
+| **Quoted Fees** | Number input. Six quick-set pills: ₹1,000 / 1,500 / 2,000 / 2,500 / 3,000 / 4,000 |
+| **Other Dues** | Multi-row list (`OtherDuesItem[]`). Each row has an amount input and a type label (free text, e.g. "Tax Paid", "Late Fee"). Rows can be added or removed. The scalar `otherDues` is kept in sync as the sum of all rows. |
 | **Total** | Shown as `∑` when other dues > 0 — `quotedFees + otherDues` |
-| **Fees Received** | Display mode by default; click pencil (✏) to edit. Click ✓ to quick-set to the total |
+| **Fees Received** | Always-editable number input |
+| **ITR Filed** | Toggle included in the draft — changes are not persisted until saved |
+| **Tags** | Tag changes are part of the draft — not persisted until saved |
 
-**Done button** — marks client as Paid. Triggers the Partial/Discount dialog if `feesReceived < totalFees`.
+**Save / Cancel flow** — no field auto-saves on typing. All edits are held in a local `Draft` object. An orange **"Unsaved changes"** banner appears at the bottom of the expanded card when the draft differs from the persisted state. The banner contains:
+- **Cancel** — resets the draft to the last persisted values
+- **Save Changes** — writes all changed fields to Firestore in a single `updateClient` call and records one combined history entry listing every changed field (e.g. `"Saved — Quoted Fees: ₹2,000; Fees Received: ₹1,500; ITR Filed"`)
 
-**Checkmark (✓) button** — immediately sets `feesReceived = quotedFees + otherDues` and records a history entry.
+An **orange dot** appears next to the client name in the collapsed header whenever the draft is dirty.
+
+**Done button** — blocks with a toast if the draft is dirty (user must save first). When clean: marks client as Paid. Triggers the Partial/Discount dialog if `feesReceived < totalFees`.
+
+**Checkmark (✓) button** — immediately sets `feesReceived = quotedFees + otherDues` and records a history entry (bypasses draft, since it sets a known value).
 
 **Re-editing fees received** — the Partial/Discount popup re-triggers on every save where `feesReceived < totalFees`, regardless of existing `paymentType`. A history note is added automatically when no popup is needed.
+
+---
+
+### Unsaved Changes Guard
+
+**Files:** `src/lib/dirtyRegistry.ts`, `src/contexts/NavigationGuardContext.tsx`
+
+All edits in a `ClientRow` are held in a local draft until explicitly saved. Three layers of protection prevent accidental data loss:
+
+#### 1 — Accordion close guard
+If the expanded client card is collapsed while the draft is dirty, an `AlertDialog` intercepts the close with three options:
+- **Keep Editing** — dismisses the dialog, card stays open
+- **Discard & Close** — resets draft, collapses the card
+- **Save & Close** — writes to Firestore, then collapses
+
+#### 2 — Page navigation guard
+`NavigationGuardContext` wraps all routes and replaces raw wouter `navigate` calls with `safeNavigate`. If any client in `dirtyRegistry` is dirty when navigation is requested, a global `AlertDialog` appears:
+- **Discard & Leave** — clears all dirty state, navigates
+- **Stay on Page** — cancels navigation
+
+`dirtyRegistry` is a module-level `Set<string>` of dirty client IDs. `ClientRow` registers/unregisters its client ID via `register(id, isDirty)` whenever `isDirty` changes.
+
+Components using `safeNavigate`: `SettingsMenu.tsx` (→ Analytics), `AnalyticsDashboard.tsx` (→ back to Dashboard).
+
+#### 3 — Browser close / refresh guard
+`ClientRow` hooks `window.beforeunload` when the draft is dirty. The browser's native "Leave site?" prompt fires if the user tries to close the tab or hard-refresh.
 
 ---
 
@@ -420,12 +472,37 @@ Every pending and partial client card has a WhatsApp button. Tapping it:
 2. Opens `wa.me/<mobile>?text=<message>` in a new tab with a pre-drafted reminder.
 3. Appends a history entry: `"WhatsApp reminder sent — ₹X pending"`.
 
-**Template system** — the message is built from the active WA template (Settings → WhatsApp Messages). Placeholders:
-- `{name}` — client name
-- `{amount}` — pending amount (formatted as ₹)
-- `{fy}` — financial year name
+**Template system** — the message is built from the active WA template (Settings → WhatsApp Messages). Supported placeholders:
 
-Five built-in templates are provided (all referencing "ITR filing fees"). A CA can also save custom templates and select one as active.
+| Placeholder | Value |
+|---|---|
+| `{name}` | Client name |
+| `{amount}` | Pending amount (formatted as ₹) |
+| `{fy}` | Financial year name (e.g. `2025-2026`) |
+| `{category}` | Derived from client tags — `Business Owner` → `Business`, `Capital Gain` → `Capital Gain`, `Salaried` → `Salaried`; blank if no matching tag |
+| `{breakdown}` | Conditional fee breakdown block (see below); collapses cleanly when empty |
+
+**`{breakdown}` expansion** — if `otherDuesItems` is non-empty, `{breakdown}` expands to:
+```
+The breakup of above mentioned amount is:
+Fees for ITR filing - ₹2,000
+Tax Paid - ₹500
+Late Fee - ₹300
+Total - ₹2,800
+```
+If there are no other dues items, `{breakdown}` and its surrounding blank line are removed so the message reads cleanly.
+
+**Old-style templates** (without `{breakdown}`) — a bullet-list breakdown is automatically appended after the message body when other dues items exist, preserving backward compatibility.
+
+Six built-in templates are provided. The second template is the ITR confirmation template:
+```
+Dear {name},
+Your ITR has been successfully filed in the category {category} for FY {fy}. The payment of Rs {amount} for this year ITR filing is currently due.
+{breakdown}
+Kindly arrange payment at your earliest convenience. Thank you.
+```
+
+A CA can also save custom templates and select one as active.
 
 **Missing mobile number** — if a client has no mobile number (e.g. imported from Excel without a phone column), tapping the WhatsApp button opens the **Add Mobile Number** dialog (`AddMobileDialog.tsx`). Saving the number:
 - Permanently updates `client.mobile` in Firestore
@@ -468,7 +545,7 @@ Accessed via the ⚙ icon in the FY selector bar.
 ## Component Reference
 
 ### `App.tsx`
-Root component. Provides `QueryClientProvider`, `AuthProvider`, and the `Toaster`. Wraps the app in `ErrorBoundary`. Renders `<Login>` or a `<Router>`-wrapped app based on auth state.
+Root component. Provides `QueryClientProvider`, `AuthProvider`, and the `Toaster`. Wraps the app in `ErrorBoundary`. Renders `<Login>` or a `<Router>`-wrapped app based on auth state. All routes are further wrapped in `NavigationGuardProvider` so `safeNavigate` is available app-wide.
 
 ### `ErrorBoundary.tsx`
 React class component wrapping the entire app. Catches unhandled render/lifecycle errors and displays a fallback UI instead of a blank screen.
@@ -489,7 +566,7 @@ Reads the `clients` array prop, computes 8 aggregated metrics, and renders them 
 Thin wrapper that renders a titled group of clients. Accepts `type` prop (`'pending' | 'partial' | 'paid' | 'no_service' | 'mixed'`). In `'mixed'` mode, picks the correct row component per-client based on `client.status`. Threads `upiId` and `waTemplate` props to each row.
 
 ### `ClientRow.tsx` *(pending clients)*
-The most complex component. Manages local state for all fee inputs with 600ms debounced saves. Handles the Done / ITR / No Service actions, the Partial/Discount dialog, and the re-edit popup. Shows fixed fee pills (₹1k–₹4k). WhatsApp button: if mobile is present, triggers `sendWhatsApp()` (QR download → `wa.me` open → history log); if mobile is absent, opens `AddMobileDialog`. Expands to show Quoted Fees, Other Dues, Fees Received, TagSelector, CommentInput, and HistoryLog.
+The most complex component. Holds all editable fields in a `Draft` object; nothing writes to Firestore until **Save Changes** is clicked. `isDirty` is a `useMemo` comparing draft vs persisted `client.*`. Registers/unregisters in `dirtyRegistry` whenever `isDirty` changes. Handles the Done / ITR / No Service actions, the Partial/Discount dialog, the accordion close guard (`AlertDialog`), and `beforeunload`. Shows fixed fee pills (₹1k–₹4k). Multi-row Other Dues list (add/remove rows with type labels). WhatsApp button: if mobile is present, triggers `sendWhatsApp()` (QR download → `wa.me` open → history log); if mobile is absent, opens `AddMobileDialog`. Expands to show Quoted Fees, Other Dues rows, Fees Received, TagSelector, CommentInput, and HistoryLog.
 
 ### `PaidClientRow.tsx` *(paid clients)*
 Read-only fee display. ITR toggle + icon-only Undo button. Expands to show fee breakdown, TagSelector, CommentInput, and HistoryLog.
@@ -516,6 +593,15 @@ Textarea with auto-bullet conversion (`- ` → `• `), Enter continuation for b
 
 ### `SettingsMenu.tsx`
 See [Settings Menu](#settings-menu). Also manages state for the UPI dialog (`showUpiDialog`, `upiDraft`, `savingUpi`) and the WA messages panel. Mobile deduplication logic (`normMobile`) lives here and is used by both the Add Client dialog and Excel import.
+
+### `NavigationGuardContext.tsx`
+React context that wraps all routes. Provides `safeNavigate(path)` — a drop-in replacement for wouter's `navigate` that checks `dirtyRegistry.hasAny()` before proceeding. If any client is dirty, renders a global `AlertDialog` asking the user to confirm discarding unsaved changes before navigating. Used by `SettingsMenu` and `AnalyticsDashboard`.
+
+### `dirtyRegistry.ts` *(lib)*
+Module-level `Set<string>` of currently-dirty client IDs. Exports:
+- `register(id: string, dirty: boolean)` — adds or removes the ID from the set
+- `hasAny(): boolean` — returns `true` if any client is dirty
+- `clear()` — empties the set (called on confirmed navigation)
 
 ### `ThemeToggle.tsx`
 Light/Dark mode toggle using `next-themes`.
@@ -546,6 +632,12 @@ interface HistoryEntry {
   at: string;             // ISO 8601 (client-side clock)
 }
 
+interface OtherDuesItem {
+  id: string;             // crypto.randomUUID()
+  amount: number;
+  type: string;           // label, e.g. "Tax Paid", "Late Fee"
+}
+
 interface UserSettings {
   customTags: string[];
   waMessages: string[];       // user-saved custom WA templates
@@ -560,7 +652,8 @@ interface Client {
   status: 'pending' | 'partial' | 'paid' | 'no_service';
   paymentType: 'partial' | 'discount' | null;
   quotedFees: number | null;
-  otherDues: number | null;
+  otherDues: number | null;         // computed total of otherDuesItems; kept for backward compat
+  otherDuesItems: OtherDuesItem[];  // source of truth for individual other-due line items
   feesReceived: number | null;
   itrFiled: boolean;
   tags: string[];
@@ -595,10 +688,22 @@ interface Client {
 const DEFAULT_TAGS = ['Salaried', 'Capital Gain', 'Business Owner', 'Foreign Assets'];
 
 const DEFAULT_WA_MESSAGES: string[] = [
-  // 5 built-in ITR filing fee reminder templates
-  // Each supports {name}, {amount}, {fy} placeholders
+  // 6 built-in templates. All support: {name}, {amount}, {fy}, {category}, {breakdown}
+  // Template 0: generic pending reminder (default)
+  // Template 1: ITR confirmation with category + conditional fee breakdown
+  // Templates 2–5: alternate phrasing reminders
 ];
 ```
+
+**WA template placeholders** (supported in all templates):
+
+| Placeholder | Resolved value |
+|---|---|
+| `{name}` | `client.name` |
+| `{amount}` | Pending amount formatted as `₹N,NNN` |
+| `{fy}` | FY name, e.g. `2025-2026` |
+| `{category}` | Tag-derived: `Business Owner` → `Business`, `Capital Gain` → `Capital Gain`, `Salaried` → `Salaried`; blank otherwise |
+| `{breakdown}` | Multi-line fee breakdown when `otherDuesItems` is non-empty; collapses (with surrounding blank line removed) when empty |
 
 ### `lib/upiQr.ts`
 
