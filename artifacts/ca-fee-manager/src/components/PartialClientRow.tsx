@@ -58,9 +58,12 @@ export function PartialClientRow({ client, uid, fyId, fyName, allTags, waTemplat
   const [showAddMobile, setShowAddMobile] = useState(false);
 
   async function sendWhatsApp(mobile: string) {
-    const totalFees = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
+    const grossFees = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
     const received = client.feesReceived ?? 0;
-    const pendingAmt = totalFees > 0 ? totalFees - received : null;
+    const legacyDiscount = client.paymentType === 'discount' ? Math.max(0, grossFees - received) : 0;
+    const discount = Math.min(Math.max(client.discountFees ?? legacyDiscount, 0), grossFees);
+    const totalFees = grossFees - discount;
+    const pendingAmt = totalFees > 0 ? Math.max(0, totalFees - received) : null;
     const amountStr = pendingAmt !== null && pendingAmt > 0 ? formatINRStr(pendingAmt) : 'pending amount';
 
     // {category} — first matching tag wins
@@ -70,13 +73,14 @@ export function PartialClientRow({ client, uid, fyId, fyName, allTags, waTemplat
       : tags.includes('Salaried') ? 'Salaried'
       : '';
 
-    // {breakdown} block — only when other dues items exist
+    // {breakdown} block — shown when other dues or a discount exist
     const otherItems = client.otherDuesItems ?? [];
     let breakdownBlock = '';
-    if (otherItems.length > 0 && totalFees > 0) {
+    if ((otherItems.length > 0 || discount > 0) && grossFees > 0) {
       const lines: string[] = ['The breakup of above mentioned amount is:'];
       if (client.quotedFees) lines.push(`Fees for ITR filing - ${formatINRStr(client.quotedFees)}`);
       for (const item of otherItems) lines.push(`${item.type || 'Other Dues'} - ${formatINRStr(item.amount)}`);
+      if (discount > 0) lines.push(`Discount Fees - ${formatINRStr(discount)}`);
       lines.push(`Total - ${formatINRStr(totalFees)}`);
       breakdownBlock = lines.join('\n');
     }
@@ -95,10 +99,11 @@ export function PartialClientRow({ client, uid, fyId, fyName, allTags, waTemplat
       message = breakdownBlock
         ? message.replace(/\{breakdown\}/g, breakdownBlock)
         : message.replace(/\n?\{breakdown\}\n?/g, '');
-    } else if (otherItems.length > 0) {
+    } else if (otherItems.length > 0 || discount > 0) {
       const lines: string[] = [];
       if (client.quotedFees) lines.push(`  • ITR Filing Fees: ${formatINRStr(client.quotedFees)}`);
       for (const item of otherItems) lines.push(`  • ${item.type || 'Other Dues'}: ${formatINRStr(item.amount)}`);
+      if (discount > 0) lines.push(`  • Discount Fees: ${formatINRStr(discount)}`);
       if (lines.length > 1) lines.push(`  Total: ${formatINRStr(totalFees)}`);
       if (received > 0) lines.push(`  Received: ${formatINRStr(received)}`);
       lines.push(`  Pending: ${amountStr}`);
@@ -142,8 +147,13 @@ export function PartialClientRow({ client, uid, fyId, fyName, allTags, waTemplat
   }
 
   const hasOtherDues = (client.otherDues ?? 0) > 0;
-  const totalFees = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
-  const pending = client.feesReceived !== null ? totalFees - client.feesReceived : null;
+  const grossFees = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
+  const legacyDiscount = client.paymentType === 'discount'
+    ? Math.max(0, grossFees - (client.feesReceived ?? 0))
+    : 0;
+  const discount = Math.min(Math.max(client.discountFees ?? legacyDiscount, 0), grossFees);
+  const totalFees = grossFees - discount;
+  const pending = client.feesReceived !== null ? Math.max(0, totalFees - client.feesReceived) : null;
   const clientTags = client.tags || [];
 
   async function handlePaidInFull() {
@@ -267,6 +277,18 @@ export function PartialClientRow({ client, uid, fyId, fyName, allTags, waTemplat
               {hasOtherDues && (
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">Total</p>
+                  <p className="text-sm font-mono font-semibold">{formatINR(grossFees)}</p>
+                </div>
+              )}
+              {discount > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Discount Fees</p>
+                  <p className="text-sm font-mono font-medium text-blue-600 dark:text-blue-400">{formatINR(discount)}</p>
+                </div>
+              )}
+              {discount > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Effective Total</p>
                   <p className="text-sm font-mono font-semibold">{formatINR(totalFees)}</p>
                 </div>
               )}

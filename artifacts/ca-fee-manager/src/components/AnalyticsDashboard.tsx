@@ -4,7 +4,7 @@ import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  useFinancialYears, useClients, createFinancialYear, DEFAULT_TAGS, useUserSettings,
+  useFinancialYears, useClients, createFinancialYear, DEFAULT_TAGS, useUserSettings, Client,
 } from '@/hooks/useFirestore';
 import { FYSelector, getCurrentFYName } from './FYSelector';
 import { Button } from '@/components/ui/button';
@@ -156,13 +156,23 @@ export function AnalyticsDashboard() {
     const itrFiled   = clients.filter(c => c.itrFiled).length;
     const itrPending = total - itrFiled;
 
-    const totalQuoted   = clients.reduce((s, c) => s + (c.quotedFees ?? 0) + (c.otherDues ?? 0), 0);
+    const grossFees = (c: Client) => (c.quotedFees ?? 0) + (c.otherDues ?? 0);
+    const discountFor = (c: Client) => {
+      const gross = grossFees(c);
+      if (c.discountFees !== null && c.discountFees !== undefined)
+        return Math.min(Math.max(c.discountFees, 0), gross);
+      return c.paymentType === 'discount' ? Math.max(0, gross - (c.feesReceived ?? 0)) : 0;
+    };
+    const payableFees = (c: Client) => grossFees(c) - discountFor(c);
+
+    const totalGross    = clients.reduce((s, c) => s + grossFees(c), 0);
     const totalReceived = clients.reduce((s, c) => s + (c.feesReceived ?? 0), 0);
-    const totalPending  = totalQuoted - totalReceived;
-    const totalDiscount = clients
-      .filter(c => c.paymentType === 'discount')
-      .reduce((s, c) => s + ((c.quotedFees ?? 0) + (c.otherDues ?? 0) - (c.feesReceived ?? 0)), 0);
-    const collectionRate = totalQuoted > 0 ? Math.round((totalReceived / totalQuoted) * 100) : 0;
+    const totalPending = clients
+      .filter(c => c.status !== 'paid' && c.status !== 'no_service')
+      .reduce((s, c) => s + Math.max(0, payableFees(c) - (c.feesReceived ?? 0)), 0);
+    const totalDiscount = clients.reduce((s, c) => s + discountFor(c), 0);
+    const totalPayable = totalGross - totalDiscount;
+    const collectionRate = totalPayable > 0 ? Math.round((totalReceived / totalPayable) * 100) : 0;
 
     /* status donut */
     const pct = (n: number) => total > 0 ? Math.round((n / total) * 100) : 0;
@@ -188,7 +198,7 @@ export function AnalyticsDashboard() {
     ];
     clients.forEach(c => {
       const idx = c.status === 'pending' ? 0 : c.status === 'partial' ? 1 : c.status === 'paid' ? 2 : 3;
-      feeByStatus[idx].quoted   += (c.quotedFees ?? 0) + (c.otherDues ?? 0);
+      feeByStatus[idx].quoted   += payableFees(c);
       feeByStatus[idx].received += (c.feesReceived ?? 0);
     });
 
@@ -197,7 +207,7 @@ export function AnalyticsDashboard() {
       .map(c => ({
         name: c.name.length > 14 ? c.name.slice(0, 13) + '…' : c.name,
         fullName: c.name,
-        total: (c.quotedFees ?? 0) + (c.otherDues ?? 0),
+        total: payableFees(c),
         received: c.feesReceived ?? 0,
         status: c.status,
       }))
@@ -216,7 +226,7 @@ export function AnalyticsDashboard() {
     ].map(b => ({
       label: b.label,
       clients: clients.filter(c => {
-        const f = (c.quotedFees ?? 0) + (c.otherDues ?? 0);
+        const f = payableFees(c);
         return f >= b.min && f < b.max;
       }).length,
     })).filter(b => b.clients > 0);
@@ -263,7 +273,7 @@ export function AnalyticsDashboard() {
     return {
       total, pending, partial, paid, noService,
       itrFiled, itrPending,
-      totalQuoted, totalReceived, totalPending, totalDiscount, collectionRate,
+      totalQuoted: totalPayable, totalReceived, totalPending, totalDiscount, collectionRate,
       statusData, itrData, feeByStatus, topClients, brackets, tagData, paymentTypeData, radialData,
     };
   }, [clients, allTags]);

@@ -192,6 +192,7 @@ users/
             paymentType: 'partial' | 'discount' | null
             quotedFees: number | null
             otherDues: number | null
+            discountFees: number | null  # manual reduction from gross fees
             feesReceived: number | null
             itrFiled: boolean
             tags: string[]
@@ -216,6 +217,8 @@ interface OtherDuesItem {
 `otherDues` (the scalar) is kept as a **computed total** for backward compat with MetricsCard and export logic. `otherDuesItems` is the source of truth for individual line items.
 
 **Backward compat:** clients that have `otherDues` set but no `otherDuesItems` array are automatically initialised with a single row `{ id, amount: otherDues, type: 'Other Dues' }` on first open.
+
+`discountFees` is a manual reduction from gross fees (`quotedFees + otherDues`). The effective payable amount is always `max(0, gross fees − discountFees)`. Historical clients marked with `paymentType: 'discount'` but without this field retain their old inferred discount until saved again.
 
 ### Key Design Decisions
 
@@ -288,7 +291,7 @@ paid ──(Undo)────────────► pending
 
 ### Partial/Discount Dialog
 
-When fees received < total fees (quoted + other dues), clicking the checkmark or "Done" triggers a two-option dialog:
+When fees received < effective payable fees (quoted fees + other dues − discount fees), clicking the checkmark or "Done" triggers a two-option dialog:
 
 - **Partial Payment** → status becomes `'partial'`, `paymentType = 'partial'`; client moves to the Partial Payments section
 - **Discount** → `paymentType = 'discount'`, status stays `'pending'` (or moves to `'paid'` if triggered via Done); discount amount is recorded in history
@@ -309,10 +312,10 @@ Eight metrics shown in a 4-column grid (2 rows):
 | Paid | `status === 'paid'` count |
 | Pending | `status === 'pending'` count |
 | ITR Filed | `itrFiled === true` count |
-| Total Fees | Sum of `quotedFees + otherDues` for all clients |
+| Total Fees | Sum of effective payable fees (`quotedFees + otherDues − discountFees`) for all clients |
 | Received | Sum of `feesReceived` for paid + partial clients |
-| Pending Amount | Sum of `(totalFees − feesReceived)` for non-paid, non-no_service clients |
-| Total Discount | Sum of `(totalFees − feesReceived)` for `paymentType === 'discount'` clients |
+| Pending Amount | Sum of `(effectiveFees − feesReceived)` for non-paid, non-no_service clients |
+| Total Discount | Sum of saved `discountFees`, with a fallback calculation for historical discount records |
 
 ---
 
@@ -374,7 +377,8 @@ Each pending client card has:
 |---|---|
 | **Quoted Fees** | Number input. Six quick-set pills: ₹1,000 / 1,500 / 2,000 / 2,500 / 3,000 / 4,000 |
 | **Other Dues** | Multi-row list (`OtherDuesItem[]`). Each row has an amount input and a type label (free text, e.g. "Tax Paid", "Late Fee"). Rows can be added or removed. The scalar `otherDues` is kept in sync as the sum of all rows. |
-| **Total** | Shown as `∑` when other dues > 0 — `quotedFees + otherDues` |
+| **Discount Fees** | Manual number input. Must be between ₹0 and gross fees; is saved with the draft and records the client as a discount case. |
+| **Total** | Gross fees are `quotedFees + otherDues`; effective payable fees are `gross fees − discountFees`. |
 | **Fees Received** | Always-editable number input |
 | **ITR Filed** | Toggle included in the draft — changes are not persisted until saved |
 | **Tags** | Tag changes are part of the draft — not persisted until saved |
@@ -385,9 +389,9 @@ Each pending client card has:
 
 An **orange dot** appears next to the client name in the collapsed header whenever the draft is dirty.
 
-**Done button** — blocks with a toast if the draft is dirty (user must save first). When clean: marks client as Paid. Triggers the Partial/Discount dialog if `feesReceived < totalFees`.
+**Done button** — blocks with a toast if the draft is dirty (user must save first). When clean: marks client as Paid. Triggers the Partial/Discount dialog only if `feesReceived < effective payable fees`.
 
-**Checkmark (✓) button** — immediately sets `feesReceived = quotedFees + otherDues` and records a history entry (bypasses draft, since it sets a known value).
+**Checkmark (✓) button** — fills `feesReceived` with the effective payable fees (gross fees less the draft discount).
 
 **Re-editing fees received** — the Partial/Discount popup re-triggers on every save where `feesReceived < totalFees`, regardless of existing `paymentType`. A history note is added automatically when no popup is needed.
 
@@ -482,17 +486,18 @@ Every pending and partial client card has a WhatsApp button. Tapping it:
 | `{category}` | Derived from client tags — `Business Owner` → `Business`, `Capital Gain` → `Capital Gain`, `Salaried` → `Salaried`; blank if no matching tag |
 | `{breakdown}` | Conditional fee breakdown block (see below); collapses cleanly when empty |
 
-**`{breakdown}` expansion** — if `otherDuesItems` is non-empty, `{breakdown}` expands to:
+**`{breakdown}` expansion** — if `otherDuesItems` is non-empty **or a discount is saved**, `{breakdown}` expands to:
 ```
 The breakup of above mentioned amount is:
 Fees for ITR filing - ₹2,000
 Tax Paid - ₹500
 Late Fee - ₹300
-Total - ₹2,800
+Discount Fees - ₹500
+Total - ₹2,300
 ```
-If there are no other dues items, `{breakdown}` and its surrounding blank line are removed so the message reads cleanly.
+The `Total` line is the effective amount after the discount. If there are no other dues and no discount, `{breakdown}` and its surrounding blank line are removed so the message reads cleanly.
 
-**Old-style templates** (without `{breakdown}`) — a bullet-list breakdown is automatically appended after the message body when other dues items exist, preserving backward compatibility.
+**Old-style templates** (without `{breakdown}`) — a bullet-list breakdown is automatically appended after the message body when other dues items or a discount exists, preserving backward compatibility. It includes the same **Discount Fees** line and effective total.
 
 Six built-in templates are provided. The second template is the ITR confirmation template:
 ```
@@ -566,7 +571,7 @@ Reads the `clients` array prop, computes 8 aggregated metrics, and renders them 
 Thin wrapper that renders a titled group of clients. Accepts `type` prop (`'pending' | 'partial' | 'paid' | 'no_service' | 'mixed'`). In `'mixed'` mode, picks the correct row component per-client based on `client.status`. Threads `upiId` and `waTemplate` props to each row.
 
 ### `ClientRow.tsx` *(pending clients)*
-The most complex component. Holds all editable fields in a `Draft` object; nothing writes to Firestore until **Save Changes** is clicked. `isDirty` is a `useMemo` comparing draft vs persisted `client.*`. Registers/unregisters in `dirtyRegistry` whenever `isDirty` changes. Handles the Done / ITR / No Service actions, the Partial/Discount dialog, the accordion close guard (`AlertDialog`), and `beforeunload`. Shows fixed fee pills (₹1k–₹4k). Multi-row Other Dues list (add/remove rows with type labels). WhatsApp button: if mobile is present, triggers `sendWhatsApp()` (QR download → `wa.me` open → history log); if mobile is absent, opens `AddMobileDialog`. Expands to show Quoted Fees, Other Dues rows, Fees Received, TagSelector, CommentInput, and HistoryLog.
+The most complex component. Holds all editable fields in a `Draft` object; nothing writes to Firestore until **Save Changes** is clicked. `isDirty` is a `useMemo` comparing draft vs persisted `client.*`. Registers/unregisters in `dirtyRegistry` whenever `isDirty` changes. Handles the Done / ITR / No Service actions, the Partial/Discount dialog, the accordion close guard (`AlertDialog`), and `beforeunload`. Shows fixed fee pills (₹1k–₹4k), multi-row Other Dues, and a validated **Discount Fees** textbox. The checkmark fills Fees Received with the effective total after discount. WhatsApp uses the effective pending amount and writes the discount into fee breakups. Expands to show Quoted Fees, Other Dues rows, Discount Fees, Fees Received, TagSelector, CommentInput, and HistoryLog.
 
 ### `PaidClientRow.tsx` *(paid clients)*
 Read-only fee display. ITR toggle + icon-only Undo button. Expands to show fee breakdown, TagSelector, CommentInput, and HistoryLog.
@@ -654,6 +659,7 @@ interface Client {
   quotedFees: number | null;
   otherDues: number | null;         // computed total of otherDuesItems; kept for backward compat
   otherDuesItems: OtherDuesItem[];  // source of truth for individual other-due line items
+  discountFees: number | null;      // manual reduction; effective payable fees = gross − discountFees
   feesReceived: number | null;
   itrFiled: boolean;
   tags: string[];
@@ -703,7 +709,7 @@ const DEFAULT_WA_MESSAGES: string[] = [
 | `{amount}` | Pending amount formatted as `₹N,NNN` |
 | `{fy}` | FY name, e.g. `2025-2026` |
 | `{category}` | Tag-derived: `Business Owner` → `Business`, `Capital Gain` → `Capital Gain`, `Salaried` → `Salaried`; blank otherwise |
-| `{breakdown}` | Multi-line fee breakdown when `otherDuesItems` is non-empty; collapses (with surrounding blank line removed) when empty |
+| `{breakdown}` | Multi-line fee breakdown when other dues or discount fees exist; includes `Discount Fees - ₹X` and an effective total, otherwise collapses with the surrounding blank line removed |
 
 ### `lib/upiQr.ts`
 

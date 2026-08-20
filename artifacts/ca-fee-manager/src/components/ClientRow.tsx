@@ -46,9 +46,17 @@ interface DuesItemLocal { id: string; amount: string; type: string; }
 interface Draft {
   quotedFees: string;
   duesItems: DuesItemLocal[];
+  discountFees: string;
   feesReceived: string;
   itrFiled: boolean;
   tags: string[];
+}
+
+function savedDiscountFees(client: Client): number | null {
+  if (client.discountFees !== null && client.discountFees !== undefined) return client.discountFees;
+  if (client.paymentType !== 'discount') return null;
+  const grossFees = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
+  return Math.max(0, grossFees - (client.feesReceived ?? 0));
 }
 
 function makeDraft(c: Client): Draft {
@@ -59,6 +67,7 @@ function makeDraft(c: Client): Draft {
       : c.otherDues != null
         ? [{ id: crypto.randomUUID(), amount: c.otherDues.toString(), type: 'Other Dues' }]
         : [],
+    discountFees: savedDiscountFees(c)?.toString() ?? '',
     feesReceived: c.feesReceived?.toString() ?? '',
     itrFiled: c.itrFiled,
     tags: c.tags || [],
@@ -107,12 +116,13 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
   const [showAddMobile, setShowAddMobile] = useState(false);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
 
-  interface PartialDialogData { received: number; quoted: number; diff: number; afterDone: boolean; }
+  interface PartialDialogData { received: number; quoted: number; gross: number; diff: number; afterDone: boolean; }
   const [partialData, setPartialData] = useState<PartialDialogData | null>(null);
 
   // ── Dirty detection ────────────────────────────────────────────────────────
   const isDirty = useMemo(() => {
     if (draft.quotedFees !== (client.quotedFees?.toString() ?? '')) return true;
+    if (draft.discountFees !== (savedDiscountFees(client)?.toString() ?? '')) return true;
     if (draft.feesReceived !== (client.feesReceived?.toString() ?? '')) return true;
     if (draft.itrFiled !== client.itrFiled) return true;
     if ([...draft.tags].sort().join(',') !== [...(client.tags || [])].sort().join(',')) return true;
@@ -152,10 +162,11 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
     }
   }
 
-  async function handleSave() {
+  async function handleSave(): Promise<boolean> {
     setSaving(true);
     try {
       const quotedNum  = draft.quotedFees  === '' ? null : Number(draft.quotedFees);
+      const discountNum = draft.discountFees === '' ? null : Number(draft.discountFees);
       const receivedNum = draft.feesReceived === '' ? null : Number(draft.feesReceived);
       const converted: OtherDuesItem[] = draft.duesItems.map(i => ({
         id: i.id,
@@ -163,7 +174,15 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
         type: i.type.trim() || 'Other Dues',
       }));
       const duesSum  = converted.reduce((s, i) => s + i.amount, 0);
-      const totalFees = (quotedNum ?? 0) + duesSum;
+      const grossFees = (quotedNum ?? 0) + duesSum;
+      if (discountNum !== null && (!Number.isFinite(discountNum) || discountNum < 0 || discountNum > grossFees)) {
+        toast.error('Discount Fees must be between ₹0 and the total fees.');
+        return false;
+      }
+      const totalFees = Math.max(0, grossFees - (discountNum ?? 0));
+      const paymentType = (discountNum ?? 0) > 0
+        ? 'discount'
+        : client.paymentType === 'discount' ? null : client.paymentType;
 
       // Build history note listing what changed
       const notes: string[] = [];
@@ -179,6 +198,9 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
         else
           notes.push(`Other Dues: ${formatINR(duesSum)} total (${nz.map(i => `${i.type} ${formatINR(i.amount)}`).join(', ')})`);
       }
+
+      if (draft.discountFees !== (savedDiscountFees(client)?.toString() ?? ''))
+        notes.push(`Discount Fees: ${discountNum !== null ? formatINR(discountNum) : '—'}`);
 
       if (draft.feesReceived !== (client.feesReceived?.toString() ?? ''))
         notes.push(`Fees Received: ${receivedNum !== null ? formatINR(receivedNum) : '—'}`);
@@ -196,6 +218,8 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
         quotedFees: quotedNum,
         otherDues: duesSum || null,
         otherDuesItems: converted,
+        discountFees: discountNum,
+        paymentType,
         feesReceived: receivedNum,
         itrFiled: draft.itrFiled,
         tags: draft.tags,
@@ -205,12 +229,14 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
       dirtyRegistry.register(client.id, false);
       toast.success('Changes saved');
 
-      // Show partial-payment dialog if received < total
-      if (receivedNum !== null && totalFees > 0 && receivedNum < totalFees && !client.paymentType) {
-        setPartialData({ received: receivedNum, quoted: totalFees, diff: totalFees - receivedNum, afterDone: false });
+      // Show partial-payment dialog if received < effective total.
+      if (receivedNum !== null && totalFees > 0 && receivedNum < totalFees) {
+        setPartialData({ received: receivedNum, quoted: totalFees, gross: grossFees, diff: totalFees - receivedNum, afterDone: false });
       }
+      return true;
     } catch {
       toast.error('Failed to save changes');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -222,8 +248,7 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
 
   async function handleSaveAndClose() {
     setShowUnsavedDialog(false);
-    await handleSave();
-    setOpen(false);
+    if (await handleSave()) setOpen(false);
   }
 
   function handleDiscardAndClose() {
@@ -237,8 +262,9 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
   function handleCheckFees() {
     const q = parseFloat(draft.quotedFees) || 0;
     const d = draft.duesItems.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
-    const total = q + d;
-    setDraft(prev => ({ ...prev, feesReceived: total > 0 ? total.toString() : '' }));
+    const discount = Math.min(Math.max(parseFloat(draft.discountFees) || 0, 0), q + d);
+    const total = q + d - discount;
+    setDraft(prev => ({ ...prev, feesReceived: total.toString() }));
   }
 
   // ── Comments (immediate — own submit flow) ─────────────────────────────────
@@ -254,9 +280,11 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
       return;
     }
     const received  = client.feesReceived;
-    const total = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
-    if (received !== null && total > 0 && received < total && !client.paymentType) {
-      setPartialData({ received, quoted: total, diff: total - received, afterDone: true });
+    const grossFees = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
+    const discount = Math.min(Math.max(savedDiscountFees(client) ?? 0, 0), grossFees);
+    const total = grossFees - discount;
+    if (received !== null && total > 0 && received < total) {
+      setPartialData({ received, quoted: total, gross: grossFees, diff: total - received, afterDone: true });
       return;
     }
     setShowDoneDialog(true);
@@ -268,7 +296,11 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
     setTimeout(async () => {
       try {
         const entry = makeEntry('Marked as Paid');
-        await updateClient(uid, fyId, client.id, { status: 'paid', history: [...(client.history || []), entry] });
+        await updateClient(uid, fyId, client.id, {
+          status: 'paid',
+          paymentType: (savedDiscountFees(client) ?? 0) > 0 ? 'discount' : client.paymentType,
+          history: [...(client.history || []), entry],
+        });
         toast.success(`${client.name} marked as done`);
       } catch { toast.error('Failed to update status'); setExiting(false); }
     }, 320);
@@ -287,7 +319,7 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
 
   async function handlePartialChoice(choice: 'partial' | 'discount') {
     if (!partialData) return;
-    const { received, quoted, diff, afterDone } = partialData;
+    const { received, gross, diff, afterDone } = partialData;
     setPartialData(null);
     const history = [...(client.history || [])];
 
@@ -301,18 +333,28 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
         } catch { toast.error('Failed to update status'); setExiting(false); }
       }, 320);
     } else {
-      history.push(makeEntry(`Discount of ${formatINR(diff)} applied. Effective fees: ${formatINR(received)}.`));
+      const totalDiscount = Math.max(0, gross - received);
+      history.push(makeEntry(`Discount of ${formatINR(totalDiscount)} applied. Effective fees: ${formatINR(received)}.`));
       if (afterDone) {
         history.push(makeEntry('Marked as Paid'));
         setExiting(true);
         setTimeout(async () => {
           try {
-            await updateClient(uid, fyId, client.id, { status: 'paid', paymentType: 'discount', history });
+            await updateClient(uid, fyId, client.id, {
+              status: 'paid',
+              paymentType: 'discount',
+              discountFees: totalDiscount || null,
+              history,
+            });
             toast.success(`${client.name} marked as done`);
           } catch { toast.error('Failed to update status'); setExiting(false); }
         }, 320);
       } else {
-        await updateClient(uid, fyId, client.id, { paymentType: 'discount', history });
+        await updateClient(uid, fyId, client.id, {
+          paymentType: 'discount',
+          discountFees: totalDiscount || null,
+          history,
+        });
         toast.success('Discount recorded');
       }
     }
@@ -320,7 +362,9 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
 
   // ── WhatsApp ───────────────────────────────────────────────────────────────
   async function sendWhatsApp(mobile: string) {
-    const totalFees = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
+    const grossFees = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
+    const discount = Math.min(Math.max(savedDiscountFees(client) ?? 0, 0), grossFees);
+    const totalFees = grossFees - discount;
     const received  = client.feesReceived ?? 0;
     const pending   = totalFees > 0 ? totalFees - received : null;
     const amountStr = pending !== null && pending > 0
@@ -334,13 +378,14 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
       : tags.includes('Salaried') ? 'Salaried'
       : '';
 
-    // {breakdown} block — only when other dues items exist
+    // {breakdown} block — shown when other dues or a discount exist
     const otherItems = client.otherDuesItems ?? [];
     let breakdownBlock = '';
-    if (otherItems.length > 0 && totalFees > 0) {
+    if ((otherItems.length > 0 || discount > 0) && grossFees > 0) {
       const lines: string[] = ['The breakup of above mentioned amount is:'];
       if (client.quotedFees) lines.push(`Fees for ITR filing - ${formatINR(client.quotedFees)}`);
       for (const item of otherItems) lines.push(`${item.type || 'Other Dues'} - ${formatINR(item.amount)}`);
+      if (discount > 0) lines.push(`Discount Fees - ${formatINR(discount)}`);
       lines.push(`Total - ${formatINR(totalFees)}`);
       breakdownBlock = lines.join('\n');
     }
@@ -360,11 +405,12 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
       message = breakdownBlock
         ? message.replace(/\{breakdown\}/g, breakdownBlock)
         : message.replace(/\n?\{breakdown\}\n?/g, '');
-    } else if (otherItems.length > 0) {
+    } else if (otherItems.length > 0 || discount > 0) {
       // Legacy templates: append breakdown after the message body
       const lines: string[] = [];
       if (client.quotedFees) lines.push(`  • ITR Filing Fees: ${formatINR(client.quotedFees)}`);
       for (const item of otherItems) lines.push(`  • ${item.type || 'Other Dues'}: ${formatINR(item.amount)}`);
+      if (discount > 0) lines.push(`  • Discount Fees: ${formatINR(discount)}`);
       if (lines.length > 1) lines.push(`  Total: ${formatINR(totalFees)}`);
       if (received > 0) lines.push(`  Received: ${formatINR(received)}`);
       lines.push(`  Pending: ${amountStr}`);
@@ -392,12 +438,17 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
 
   // ── Computed display values ────────────────────────────────────────────────
   const draftDuesTotal = draft.duesItems.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
-  const draftTotal     = (parseFloat(draft.quotedFees) || 0) + draftDuesTotal;
+  const draftGrossTotal = (parseFloat(draft.quotedFees) || 0) + draftDuesTotal;
+  const draftDiscount = Math.min(Math.max(parseFloat(draft.discountFees) || 0, 0), draftGrossTotal);
+  const draftTotal = draftGrossTotal - draftDiscount;
 
   // Header pills always show persisted (saved) data
   const savedHasOtherDues = (client.otherDues ?? 0) > 0;
-  const savedTotal        = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
-  const headerFeeDisplay  = savedHasOtherDues ? formatINR(savedTotal) : formatINR(client.quotedFees);
+  const savedGrossTotal   = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
+  const savedDiscount     = Math.min(Math.max(savedDiscountFees(client) ?? 0, 0), savedGrossTotal);
+  const savedTotal        = savedGrossTotal - savedDiscount;
+  const headerHasAdjustedTotal = savedHasOtherDues || savedDiscount > 0;
+  const headerFeeDisplay  = headerHasAdjustedTotal ? formatINR(savedTotal) : formatINR(client.quotedFees);
   const receivedDisplay   = formatINR(client.feesReceived);
   const clientTags        = client.tags || [];
 
@@ -469,7 +520,7 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleNoServiceConfirm} variant="destructive">
+            <AlertDialogAction onClick={handleNoServiceConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               <UserX className="w-4 h-4 mr-1.5" />Confirm No Service
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -556,8 +607,8 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
             {headerFeeDisplay && (
               <span
                 className="hidden sm:inline text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded"
-                title={savedHasOtherDues ? 'Total (Quoted + Other Dues)' : 'Quoted Fees'}>
-                {savedHasOtherDues && <span className="mr-0.5 opacity-60">∑</span>}{headerFeeDisplay}
+                title={savedDiscount > 0 ? 'Effective total after discount' : savedHasOtherDues ? 'Total (Quoted + Other Dues)' : 'Quoted Fees'}>
+                {headerHasAdjustedTotal && <span className="mr-0.5 opacity-60">∑</span>}{headerFeeDisplay}
               </span>
             )}
             {receivedDisplay && (
@@ -688,14 +739,36 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
               </div>
             </div>
 
+            {/* Discount Fees */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Discount Fees</label>
+              <Input
+                type="number"
+                min="0"
+                max={draftGrossTotal || undefined}
+                value={draft.discountFees}
+                onChange={(e) => setDraft(d => ({ ...d, discountFees: e.target.value }))}
+                placeholder="0"
+                className="font-mono"
+                data-testid={`input-discount-fees-${client.id}`}
+              />
+              {draftGrossTotal > 0 && (
+                <p className={`text-xs font-mono ${parseFloat(draft.discountFees) > draftGrossTotal ? 'text-destructive' : 'text-muted-foreground'}`}>
+                  {parseFloat(draft.discountFees) > draftGrossTotal
+                    ? `Discount cannot exceed ${formatINR(draftGrossTotal)}`
+                    : <>Effective Total: <span className="font-semibold text-foreground">{formatINR(draftTotal)}</span></>}
+                </p>
+              )}
+            </div>
+
             {/* Fees Received */}
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">Fees Received</label>
               <div className="flex gap-1">
                 <Button size="icon" variant="outline" onClick={handleCheckFees}
-                  disabled={!draft.quotedFees && draftDuesTotal === 0}
+                  disabled={draftGrossTotal === 0}
                   className="shrink-0 h-9 w-9 text-green-600 border-green-300 hover:bg-green-50 dark:hover:bg-green-950"
-                  title="Fill with total fees"
+                  title="Fill with effective total fees"
                   data-testid={`button-check-fees-${client.id}`}>
                   <Check className="w-4 h-4" />
                 </Button>

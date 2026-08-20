@@ -100,9 +100,14 @@ export function SettingsMenu({ uid, fyId, fyName, clients }: SettingsMenuProps) 
 
     // ── Sheet 1: Clients summary ──
     const clientRows = clients.map((c) => {
-      const total = (c.quotedFees ?? 0) + (c.otherDues ?? 0);
+      const grossTotal = (c.quotedFees ?? 0) + (c.otherDues ?? 0);
+      const legacyDiscount = c.paymentType === 'discount'
+        ? Math.max(0, grossTotal - (c.feesReceived ?? 0))
+        : 0;
+      const discount = Math.min(Math.max(c.discountFees ?? legacyDiscount, 0), grossTotal);
+      const total = grossTotal - discount;
       const received = c.feesReceived ?? 0;
-      const pending = total > 0 ? total - received : null;
+      const pending = total > 0 ? Math.max(0, total - received) : null;
       const notes = (c.history ?? [])
         .filter((h) => h.action.startsWith('Note: '))
         .map((h) => h.action.slice(6))
@@ -114,7 +119,9 @@ export function SettingsMenu({ uid, fyId, fyName, clients }: SettingsMenuProps) 
         'Payment Type':      c.paymentType === 'partial' ? 'Partial' : c.paymentType === 'discount' ? 'Discount' : '',
         'Quoted Fees (₹)':   c.quotedFees ?? '',
         'Other Dues (₹)':    c.otherDues ?? '',
-        'Total Fees (₹)':    total || '',
+        'Discount Fees (₹)': discount || '',
+        'Total Fees (₹)':    grossTotal || '',
+        'Effective Fees (₹)': total || '',
         'Fees Received (₹)': received || '',
         'Pending (₹)':       pending ?? '',
         'ITR Filed':         c.itrFiled ? 'Yes' : 'No',
@@ -126,8 +133,8 @@ export function SettingsMenu({ uid, fyId, fyName, clients }: SettingsMenuProps) 
     const ws1 = XLSX.utils.json_to_sheet(clientRows);
     ws1['!cols'] = [
       { wch: 25 }, { wch: 14 }, { wch: 12 }, { wch: 13 },
-      { wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 16 },
-      { wch: 12 }, { wch: 10 }, { wch: 30 }, { wch: 50 },
+      { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 16 },
+      { wch: 16 }, { wch: 12 }, { wch: 10 }, { wch: 30 }, { wch: 50 },
     ];
     XLSX.utils.book_append_sheet(wb, ws1, 'Clients');
 
@@ -511,8 +518,7 @@ export function SettingsMenu({ uid, fyId, fyName, clients }: SettingsMenuProps) 
             <AlertDialogAction
               onClick={handleConfirmDelete}
               disabled={deleting}
-              variant="destructive"
-              className="gap-1.5"
+              className="gap-1.5 bg-destructive text-destructive-foreground hover:bg-destructive/90"
               data-testid="button-confirm-delete"
             >
               <Trash2 className="w-3.5 h-3.5" />

@@ -59,6 +59,7 @@ export interface Client {
   quotedFees: number | null;
   otherDues: number | null;         // computed total; kept for backward compat
   otherDuesItems: OtherDuesItem[];  // individual labelled line items
+  discountFees: number | null;      // manual fee reduction; payable fees = gross fees − discountFees
   feesReceived: number | null;
   itrFiled: boolean;
   tags: string[];
@@ -151,6 +152,7 @@ export async function createClient(uid: string, fyId: string, name: string, mobi
       quotedFees: null,
       otherDues: null,
       otherDuesItems: [],
+      discountFees: null,
       feesReceived: null,
       itrFiled: false,
       tags: [],

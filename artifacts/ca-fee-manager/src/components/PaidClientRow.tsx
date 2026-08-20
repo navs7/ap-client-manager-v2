@@ -50,7 +50,12 @@ export function PaidClientRow({ client, uid, fyId, allTags }: PaidClientRowProps
   }
 
   const hasOtherDues = (client.otherDues ?? 0) > 0;
-  const totalFees = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
+  const grossFees = (client.quotedFees ?? 0) + (client.otherDues ?? 0);
+  const legacyDiscount = client.paymentType === 'discount'
+    ? Math.max(0, grossFees - (client.feesReceived ?? 0))
+    : 0;
+  const discount = Math.min(Math.max(client.discountFees ?? legacyDiscount, 0), grossFees);
+  const totalFees = grossFees - discount;
   const clientTags = client.tags || [];
 
   return (
@@ -74,9 +79,9 @@ export function PaidClientRow({ client, uid, fyId, allTags }: PaidClientRowProps
               ITR ✓
             </span>
           )}
-          <span className="hidden sm:inline text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded" title={hasOtherDues ? 'Total Fees' : 'Quoted Fees'}>
-            {hasOtherDues && <span className="mr-0.5 opacity-60">∑</span>}
-            {hasOtherDues ? formatINR(totalFees) : formatINR(client.quotedFees)}
+            <span className="hidden sm:inline text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded" title={discount > 0 ? 'Effective Total after Discount' : hasOtherDues ? 'Total Fees' : 'Quoted Fees'}>
+              {(hasOtherDues || discount > 0) && <span className="mr-0.5 opacity-60">∑</span>}
+              {(hasOtherDues || discount > 0) ? formatINR(totalFees) : formatINR(client.quotedFees)}
           </span>
           <span className="hidden sm:inline text-xs font-mono font-semibold text-accent bg-accent/10 px-2 py-0.5 rounded">
             {formatINR(client.feesReceived)}
@@ -113,6 +118,18 @@ export function PaidClientRow({ client, uid, fyId, allTags }: PaidClientRowProps
             {hasOtherDues && (
               <div className="space-y-1">
                 <p className="text-xs font-medium text-muted-foreground">Total Fees</p>
+                <p className="text-sm font-mono font-semibold">{formatINR(grossFees)}</p>
+              </div>
+            )}
+            {discount > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Discount Fees</p>
+                <p className="text-sm font-mono font-medium text-blue-600 dark:text-blue-400">{formatINR(discount)}</p>
+              </div>
+            )}
+            {discount > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Effective Total</p>
                 <p className="text-sm font-mono font-semibold">{formatINR(totalFees)}</p>
               </div>
             )}

@@ -14,9 +14,18 @@ export function MetricsCard({ clients }: MetricsCardProps) {
     const pendingCount = clients.filter((c) => c.status === 'pending').length;
     const itrFiledCount = clients.filter((c) => c.itrFiled === true).length;
 
-    const totalFees = (c: Client) => (c.quotedFees || 0) + (c.otherDues || 0);
+    const grossFees = (c: Client) => (c.quotedFees || 0) + (c.otherDues || 0);
+    const discountFor = (c: Client) => {
+      const gross = grossFees(c);
+      const savedDiscount = c.discountFees;
+      if (savedDiscount !== null && savedDiscount !== undefined)
+        return Math.min(Math.max(savedDiscount, 0), gross);
+      // Preserve the existing metric for historical discount records.
+      return c.paymentType === 'discount' ? Math.max(0, gross - (c.feesReceived || 0)) : 0;
+    };
+    const payableFees = (c: Client) => grossFees(c) - discountFor(c);
 
-    const totalQuoted = clients.reduce((sum, c) => sum + totalFees(c), 0);
+    const totalQuoted = clients.reduce((sum, c) => sum + payableFees(c), 0);
 
     const totalReceived = clients
       .filter((c) => c.status === 'paid' || c.status === 'partial')
@@ -24,13 +33,9 @@ export function MetricsCard({ clients }: MetricsCardProps) {
 
     const pending = clients
       .filter((c) => c.status !== 'paid' && c.status !== 'no_service')
-      .reduce((sum, c) => sum + Math.max(0, totalFees(c) - (c.feesReceived || 0)), 0);
+      .reduce((sum, c) => sum + Math.max(0, payableFees(c) - (c.feesReceived || 0)), 0);
 
-    // Discount = clients who received a discount (paymentType === 'discount')
-    // Discount amount = quoted total − fees received
-    const totalDiscount = clients
-      .filter((c) => c.paymentType === 'discount')
-      .reduce((sum, c) => sum + Math.max(0, totalFees(c) - (c.feesReceived || 0)), 0);
+    const totalDiscount = clients.reduce((sum, c) => sum + discountFor(c), 0);
 
     return { totalClients, paidCount, pendingCount, itrFiledCount, totalQuoted, totalReceived, pending, totalDiscount };
   }, [clients]);
