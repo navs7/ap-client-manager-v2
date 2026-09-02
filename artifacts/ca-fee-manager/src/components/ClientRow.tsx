@@ -115,20 +115,22 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
   const [showNoServiceDialog, setShowNoServiceDialog] = useState(false);
   const [showAddMobile, setShowAddMobile] = useState(false);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const [savedDraftBaseline, setSavedDraftBaseline] = useState<Draft | null>(null);
 
   interface PartialDialogData { received: number; quoted: number; gross: number; diff: number; afterDone: boolean; }
   const [partialData, setPartialData] = useState<PartialDialogData | null>(null);
 
   // ── Dirty detection ────────────────────────────────────────────────────────
   const isDirty = useMemo(() => {
-    if (draft.quotedFees !== (client.quotedFees?.toString() ?? '')) return true;
-    if (draft.discountFees !== (savedDiscountFees(client)?.toString() ?? '')) return true;
-    if (draft.feesReceived !== (client.feesReceived?.toString() ?? '')) return true;
-    if (draft.itrFiled !== client.itrFiled) return true;
-    if ([...draft.tags].sort().join(',') !== [...(client.tags || [])].sort().join(',')) return true;
-    if (serializeDraftDues(draft.duesItems) !== serializeClientDues(client)) return true;
+    const baseline = savedDraftBaseline ?? makeDraft(client);
+    if (draft.quotedFees !== baseline.quotedFees) return true;
+    if (draft.discountFees !== baseline.discountFees) return true;
+    if (draft.feesReceived !== baseline.feesReceived) return true;
+    if (draft.itrFiled !== baseline.itrFiled) return true;
+    if ([...draft.tags].sort().join(',') !== [...baseline.tags].sort().join(',')) return true;
+    if (serializeDraftDues(draft.duesItems) !== serializeDraftDues(baseline.duesItems)) return true;
     return false;
-  }, [draft, client]);
+  }, [draft, client, savedDraftBaseline]);
 
   const isDirtyRef = useRef(false);
   isDirtyRef.current = isDirty;
@@ -149,7 +151,10 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
 
   // Sync draft from Firestore when the card has no unsaved changes
   useEffect(() => {
-    if (!isDirtyRef.current) setDraft(makeDraft(client));
+    if (!isDirtyRef.current) {
+      setSavedDraftBaseline(null);
+      setDraft(makeDraft(client));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client.updatedAt]);
 
@@ -226,6 +231,7 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
         history,
       });
 
+      setSavedDraftBaseline(draft);
       dirtyRegistry.register(client.id, false);
       toast.success('Changes saved');
 
@@ -244,6 +250,7 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
   }
 
   function handleCancel() {
+    setSavedDraftBaseline(null);
     setDraft(makeDraft(client));
   }
 
@@ -254,6 +261,7 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
 
   function handleDiscardAndClose() {
     setShowUnsavedDialog(false);
+    setSavedDraftBaseline(null);
     setDraft(makeDraft(client));
     dirtyRegistry.register(client.id, false);
     setOpen(false);
