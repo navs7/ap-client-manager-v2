@@ -172,7 +172,10 @@ export async function updateClient(
   data: Partial<Omit<Client, 'id' | 'createdAt'>>
 ) {
   const clientRef = doc(db, `users/${uid}/financial_years/${fyId}/clients/${clientId}`);
-  await updateDoc(clientRef, { ...data, updatedAt: serverTimestamp() });
+  const definedData = Object.fromEntries(
+    Object.entries(data).filter(([, value]) => value !== undefined)
+  );
+  await updateDoc(clientRef, { ...definedData, updatedAt: serverTimestamp() });
 }
 
 export async function deleteClient(uid: string, fyId: string, clientId: string) {

@@ -69,7 +69,7 @@ function makeDraft(c: Client): Draft {
         : [],
     discountFees: savedDiscountFees(c)?.toString() ?? '',
     feesReceived: c.feesReceived?.toString() ?? '',
-    itrFiled: c.itrFiled,
+    itrFiled: c.itrFiled ?? false,
     tags: c.tags || [],
   };
 }
@@ -182,7 +182,7 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
       const totalFees = Math.max(0, grossFees - (discountNum ?? 0));
       const paymentType = (discountNum ?? 0) > 0
         ? 'discount'
-        : client.paymentType === 'discount' ? null : client.paymentType;
+        : client.paymentType === 'discount' ? null : (client.paymentType ?? null);
 
       // Build history note listing what changed
       const notes: string[] = [];
@@ -234,7 +234,8 @@ export function ClientRow({ client, uid, fyId, fyName, allTags, waTemplate, upiI
         setPartialData({ received: receivedNum, quoted: totalFees, gross: grossFees, diff: totalFees - receivedNum, afterDone: false });
       }
       return true;
-    } catch {
+    } catch (error) {
+      console.error('Failed to save client changes', { clientId: client.id, fyId, error });
       toast.error('Failed to save changes');
       return false;
     } finally {
